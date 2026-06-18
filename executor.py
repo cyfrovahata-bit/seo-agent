@@ -54,16 +54,30 @@ LAYOUT_PROMPT = """\
 Завдання: {title}
 Опис: {description}
 
-Зразок має такі info-box блоки (назва + іконка Font Awesome):
+Зразок має такі info-box блоки (назва + поточна іконка + опис):
 {infoboxes_json}
 
-Твоє завдання — повернути оновлений список info-box блоків для нової теми.
-Кількість блоків може бути РІЗНОЮ (від 2 до 6) — стільки, скільки реально потрібно.
-Для кожного блоку підбери відповідну іконку з Font Awesome (назва slug, наприклад:
-"chart-line", "search", "money-bill-wave", "users", "cog", "star", "check-circle").
+Твоє завдання:
+1. Визначити скільки блоків потрібно для нової теми (від 2 до 7)
+2. Для кожного блоку написати назву і короткий опис (1 рядок)
+3. Підібрати іконку Font Awesome яка ТОЧНО відповідає змісту блоку
+
+Доступні Font Awesome іконки (використовуй ТІЛЬКИ ці назви):
+- SEO/пошук: search, chart-line, chart-bar, bullseye, crosshairs
+- Гроші/ціна: money-bill-wave, dollar-sign, hand-holding-usd, tags, coins
+- Швидкість/час: tachometer-alt, clock, stopwatch, hourglass-half
+- Технічне: cog, cogs, wrench, tools, code, laptop-code
+- Контент/текст: file-alt, pencil-alt, edit, align-left, newspaper
+- Посилання/трафік: link, external-link-alt, share-alt, project-diagram
+- Користувачі/клієнти: users, user-check, user-tie, handshake
+- Перевірка/успіх: check-circle, clipboard-check, tasks, list-check
+- Зріст/результат: arrow-up, level-up-alt, rocket, trophy, medal
+- Локальне SEO: map-marker-alt, map, globe, location-arrow
+- Аудит: microscope, search-plus, binoculars, eye
+- Ключові слова: key, keyboard, font, text-height
 
 Поверни ТІЛЬКИ валідний JSON масив:
-[{{"title": "Назва блоку", "desc": "короткий опис", "icon": "fa-icon-slug"}}, ...]
+[{{"title": "Назва блоку", "desc": "короткий опис 1 речення", "icon": "назва-іконки"}}, ...]
 
 Жодних пояснень, тільки JSON.
 """
