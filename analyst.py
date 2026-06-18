@@ -84,30 +84,26 @@ def build_trend_table(history: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_page_snapshots(gsc_data: list[dict], wp: WordPressClient) -> dict:
-    """Витягує вміст унікальних сторінок із WordPress для перевірки що вже є."""
-    slugs = set()
-    for row in gsc_data:
-        page = row.get("page", "")
-        # витягуємо slug з URL: /seo-prosuvannya-saitiv/ → seo-prosuvannya-saitiv
-        parts = [p for p in page.rstrip("/").split("/") if p]
-        if parts:
-            slugs.add(parts[-1] if parts[-1] else "__home__")
-        else:
-            slugs.add("__home__")
+def build_page_snapshots(wp: WordPressClient) -> dict:
+    """Витягує вміст ВСІХ опублікованих сторінок із WordPress."""
+    from bs4 import BeautifulSoup
     snapshots = {}
-    for slug in slugs:
-        if slug == "__home__":
-            snap = wp.get_page_snapshot("")
-            if snap is None:
-                # спробуємо slug головної
-                items = wp._get("pages", {"per_page": 1, "parent": 0})
-                snap = {"title": "Головна", "meta_description": "", "seo_title": "", "text_content": ""}
-            snapshots["/"] = snap
-        else:
-            snap = wp.get_page_snapshot(slug)
-            if snap:
-                snapshots[f"/{slug}/"] = snap
+    for post_type in ("pages", "posts"):
+        items = wp._get(post_type, {"per_page": 100, "status": "publish"})
+        for item in items:
+            link = item.get("link", "")
+            base = wp.base_url.rstrip("/")
+            path = link.replace(base, "") or "/"
+            raw_html = item["content"].get("rendered", "")
+            soup = BeautifulSoup(raw_html, "html.parser")
+            text = " ".join(soup.get_text(" ", strip=True).split())[:2000]
+            yoast = item.get("yoast_head_json") or {}
+            snapshots[path] = {
+                "title": item["title"].get("rendered", ""),
+                "meta_description": yoast.get("description", ""),
+                "seo_title": yoast.get("title", ""),
+                "text_content": text,
+            }
     return snapshots
 
 
@@ -178,7 +174,7 @@ def main():
     backlog = load_json("recommendations.json", default=[])
 
     wp = WordPressClient(os.environ["WP_BASE_URL"], os.environ["WP_USERNAME"], os.environ["WP_APP_PASSWORD"])
-    page_snapshots = build_page_snapshots(gsc_data, wp)
+    page_snapshots = build_page_snapshots(wp)
     frozen_pages = build_frozen_pages(backlog, today)
     impact_reviews = build_impact_reviews(backlog, gsc_data, ga4_data, today)
     open_backlog = [r for r in backlog if r["status"] == "pending"]

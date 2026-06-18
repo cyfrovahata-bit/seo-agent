@@ -29,6 +29,40 @@
     "action": "create_new",
     "target_page_path": "/rozrobka-saitiv/",
     "id": 3,
+    "status": "dismissed",
+    "dismiss_reason": "Сторінка вже існує за адресою /rozrobka-saitiv-pid-kliuch/",
+    "created": "2026-06-18"
+  },
+  {
+    "title": "Додати SEO title і meta description на /pro-nas-cyfrovahata/",
+    "description": "Сторінка «Про нас» не має SEO title і meta description. Заповнити: Title — «Про нас — Цифрова Хата | Розробка сайтів та SEO в Україні», meta description — 130-150 символів з коротким описом команди та УТП (працюємо напряму, результат у день звернення).",
+    "type": "onpage",
+    "priority": "medium",
+    "action": "edit_existing",
+    "target_page_path": "/pro-nas-cyfrovahata/",
+    "id": 4,
+    "status": "pending",
+    "created": "2026-06-18"
+  },
+  {
+    "title": "Додати SEO title і meta description на /kontakty/",
+    "description": "Сторінка контактів без SEO title і meta description. Прописати: Title — «Контакти — Цифрова Хата | Розробка сайтів та SEO», meta description — з акцентом на швидку відповідь (15 хв), Telegram, Україна.",
+    "type": "onpage",
+    "priority": "medium",
+    "action": "edit_existing",
+    "target_page_path": "/kontakty/",
+    "id": 5,
+    "status": "pending",
+    "created": "2026-06-18"
+  },
+  {
+    "title": "Додати SEO title і meta description на сторінках блогу",
+    "description": "Три статті (/chomu-sait-ne-prynosyt-kliientiv/, /yak-vybraty-kompaniiu-dlia-rozrobky-saitu/, /skilky-koshtuie-sait-pid-kliuch-v-ukraini/) не мають SEO title і meta description. Для кожної прописати унікальний title (до 60 символів) і meta description (130-150 символів) із ключовим запитом статті та CTA. Пріоритет — /skilky-koshtuie-sait-pid-kliuch-v-ukraini/ (комерційний намір).",
+    "type": "onpage",
+    "priority": "medium",
+    "action": "edit_existing",
+    "target_page_path": "/skilky-koshtuie-sait-pid-kliuch-v-ukraini/",
+    "id": 6,
     "status": "pending",
     "created": "2026-06-18"
   }
