@@ -239,23 +239,25 @@ def replace_block_ids(markup: str) -> str:
 
 
 def extract_texts(markup: str) -> list[str]:
-    """Витягує ТОЧНІ рядки з розмітки через regex — без парсингу, без нормалізації."""
+    """Витягує ТОЧНІ рядки з розмітки через regex — тільки основний контент."""
     texts, seen = [], set()
     # h1/h2 заголовки
     for m in re.finditer(r'<h[12][^>]*>(.*?)</h[12]>', markup, re.DOTALL):
         t = m.group(1).strip()
-        if len(re.sub(r'<[^>]+>', '', t)) > 10 and t not in seen:
-            seen.add(t); texts.append(t)
-    # Параграфи (з можливим inner HTML — <strong>, <br> тощо)
-    for m in re.finditer(r'<p[^>]*>(.*?)</p>', markup, re.DOTALL):
-        t = m.group(1).strip()
         plain = re.sub(r'<[^>]+>', '', t)
-        if len(plain) > 10 and t not in seen:
+        if len(plain) > 5 and t not in seen:
             seen.add(t); texts.append(t)
+    # Лише параграфи з uagb-desc-text (підзаголовки під h2) та uagb-ifb-desc
+    for cls in ('uagb-desc-text', 'uagb-ifb-desc', 'uagb-heading-text'):
+        for m in re.finditer(rf'<p class="{cls}">(.*?)</p>', markup, re.DOTALL):
+            t = m.group(1).strip()
+            plain = re.sub(r'<[^>]+>', '', t)
+            if len(plain) > 10 and t not in seen:
+                seen.add(t); texts.append(t)
     # Мітки icon-list
     for m in re.finditer(r'<span class="uagb-icon-list__label">(.*?)</span>', markup):
         t = m.group(1).strip()
-        if len(t) > 5 and t not in seen:
+        if len(t) > 3 and t not in seen:
             seen.add(t); texts.append(t)
     return texts
 
@@ -289,9 +291,17 @@ def process_create_new(rec, client, wp, telegram_token, chat_id):
     # Claude генерує нові тексти за індексом
     raw_response = call_claude(client, TEXTS_REPLACEMENT_PROMPT.format(
         title=rec["title"], description=rec["description"], texts_json=texts_json,
-    ), max_tokens=4000)
+    ), max_tokens=8000)
     json_match = re.search(r"\[.*\]", raw_response, re.DOTALL)
-    new_texts = json.loads(json_match.group()) if json_match else []
+    if json_match:
+        new_texts = json.loads(json_match.group())
+    else:
+        # Якщо JSON обрізано — закриваємо масив і парсимо що є
+        raw_arr = re.search(r"\[.*", raw_response, re.DOTALL)
+        try:
+            new_texts = json.loads((raw_arr.group() if raw_arr else "[]") + "]")
+        except Exception:
+            new_texts = []
 
     # Claude генерує нові info-box іконки
     infoboxes = extract_infoboxes(reference_markup)
