@@ -239,14 +239,22 @@ def replace_block_ids(markup: str) -> str:
 
 
 def extract_texts(markup: str) -> list[str]:
-    """Витягує текстові рядки з HTML-розмітки (h1-h4, p, li), довші за 10 символів."""
+    """Витягує inner HTML блочних елементів і текст span-міток списків."""
     soup = BeautifulSoup(markup, "html.parser")
     seen, texts = set(), []
-    for tag in soup.find_all(["h1", "h2", "h3", "h4", "p", "li"]):
-        t = tag.get_text(strip=True)
-        if len(t) > 10 and t not in seen:
-            seen.add(t)
-            texts.append(t)
+    # Блочні елементи — беремо inner HTML (щоб replace() знаходив точний збіг у розмітці)
+    for tag in soup.find_all(["h1", "h2", "h3", "h4", "p"]):
+        inner = tag.decode_contents().strip()
+        plain = tag.get_text(strip=True)
+        if len(plain) > 10 and inner not in seen:
+            seen.add(inner)
+            texts.append(inner)
+    # Елементи icon-list — вони у <span>, не <li>
+    for tag in soup.find_all("span", class_="uagb-icon-list__label"):
+        text = tag.get_text(strip=True)
+        if len(text) > 5 and text not in seen:
+            seen.add(text)
+            texts.append(text)
     return texts
 
 
