@@ -57,24 +57,27 @@ LAYOUT_PROMPT = """\
 Зразок має такі info-box блоки (назва + поточна іконка + опис):
 {infoboxes_json}
 
-Твоє завдання:
-1. Визначити скільки блоків потрібно для нової теми (від 2 до 7)
-2. Для кожного блоку написати назву і короткий опис (1 рядок)
-3. Підібрати іконку Font Awesome яка ТОЧНО відповідає змісту блоку
+Зразок має {count} блоків — поверни рівно {count} об'єктів.
 
-Доступні Font Awesome іконки (використовуй ТІЛЬКИ ці назви):
-- SEO/пошук: search, chart-line, chart-bar, bullseye, crosshairs
-- Гроші/ціна: money-bill-wave, dollar-sign, hand-holding-usd, tags, coins
-- Швидкість/час: tachometer-alt, clock, stopwatch, hourglass-half
-- Технічне: cog, cogs, wrench, tools, code, laptop-code
-- Контент/текст: file-alt, pencil-alt, edit, align-left, newspaper
-- Посилання/трафік: link, external-link-alt, share-alt, project-diagram
+Твоє завдання:
+1. Для кожного блоку написати назву і короткий опис (1 рядок) відповідно до нової теми
+2. Підібрати іконку Font Awesome яка ТОЧНО відповідає змісту блоку
+3. Всі {count} іконок ПОВИННІ бути РІЗНИМИ між собою
+
+Доступні Font Awesome іконки (використовуй ТІЛЬКИ ці точні назви — вони вже перевірені):
+- SEO/пошук: searchengin, chart-line, chart-bar, bullseye
+- Гроші/ціна: money-bill-wave, dollar-sign, coins, tags
+- Швидкість/час: gauge-high, clock, stopwatch, hourglass-half
+- Технічне: gear, wrench, code, laptop-code
+- Контент/текст: file-lines, pencil, align-left, newspaper
+- Посилання/трафік: link, share-nodes, diagram-project
 - Користувачі/клієнти: users, user-check, user-tie, handshake
-- Перевірка/успіх: check-circle, clipboard-check, tasks, list-check
-- Зріст/результат: arrow-up, level-up-alt, rocket, trophy, medal
-- Локальне SEO: map-marker-alt, map, globe, location-arrow
-- Аудит: microscope, search-plus, binoculars, eye
-- Ключові слова: key, keyboard, font, text-height
+- Перевірка/успіх: circle-check, clipboard-check, list-check
+- Зріст/результат: arrow-trend-up, rocket, trophy, medal
+- Локальне SEO: location-dot, map, globe
+- Аудит: microscope, eye, binoculars
+- Ключові слова: key, keyboard, text-height
+- Інші: shield, chart-column, mobile-screen-button, computer-mouse, text-width
 
 Поверни ТІЛЬКИ валідний JSON масив:
 [{{"title": "Назва блоку", "desc": "короткий опис 1 речення", "icon": "назва-іконки"}}, ...]
@@ -156,70 +159,76 @@ def process_edit_existing(rec, client, wp, telegram_token, chat_id):
     rec["edit_link"] = revision["edit_link"]
 
 
-def extract_infoboxes(markup: str) -> list[dict]:
-    """Витягує info-box блоки: назва, опис, іконка."""
-    pattern = r'wp:uagb/info-box \{[^}]*"icon":"([^"]+)"[^}]*\}[^<]*<[^>]+>[^<]*<[^>]+>[^<]*<svg[^/]*/svg>[^<]*</div><div[^>]*><div[^>]*><h3[^>]*>([^<]*)</h3></div><p[^>]*>([^<]*)</p>'
+def get_stacked_infobox_comment_positions(markup: str) -> list[tuple[int, int]]:
+    """Знаходить позиції (start, end) коментарів <!-- wp:uagb/info-box --> з iconView=Stacked."""
     results = []
-    for m in re.finditer(r'"icon":"([^"]+)".*?<h3[^>]*>([^<]*)</h3>.*?<p[^>]*>(.*?)</p>', markup):
-        results.append({"icon": m.group(1), "title": m.group(2), "desc": BeautifulSoup(m.group(3), "html.parser").get_text()})
+    i = 0
+    marker = "<!-- wp:uagb/info-box "
+    while True:
+        pos = markup.find(marker, i)
+        if pos == -1:
+            break
+        end = markup.find(" -->", pos)
+        if end == -1:
+            break
+        end += 4
+        if '"iconView":"Stacked"' in markup[pos:end]:
+            results.append((pos, end))
+        i = end
     return results
 
 
-def get_infobox_containers(markup: str) -> list[tuple[int, int]]:
-    """Знаходить позиції (start, end) кожного контейнера з info-box."""
-    positions = []
-    for m in re.finditer(r'<!-- wp:uagb/container \{[^}]*\} -->\s*<div[^>]*><!-- wp:uagb/info-box', markup):
-        start = m.start()
-        # Знаходимо кінець цього контейнера
-        depth = 0
-        i = start
-        while i < len(markup):
-            if markup[i:].startswith('<!-- wp:uagb/container'):
-                depth += 1
-            elif markup[i:].startswith('<!-- /wp:uagb/container -->'):
-                depth -= 1
-                if depth == 0:
-                    end = i + len('<!-- /wp:uagb/container -->')
-                    positions.append((start, end))
-                    break
-            i += 1
-    return positions
+def extract_infoboxes(markup: str) -> list[dict]:
+    """Витягує іконки зі stacked info-box Gutenberg-коментарів."""
+    results = []
+    for start, end in get_stacked_infobox_comment_positions(markup):
+        m = re.search(r'"icon":"([^"]+)"', markup[start:end])
+        if m:
+            results.append({"icon": m.group(1), "title": "", "desc": ""})
+    return results
 
 
 def adjust_infobox_blocks(markup: str, new_infoboxes: list[dict]) -> str:
-    """Додає або видаляє info-box контейнери і замінює іконки та тексти."""
-    positions = get_infobox_containers(markup)
+    """Замінює іконки у stacked info-box блоках (тільки у Gutenberg-коментарях)."""
+    positions = get_stacked_infobox_comment_positions(markup)
     if not positions:
         return markup
+    # Замінюємо з кінця, щоб не зміщувати позиції
+    for i, (start, end) in enumerate(reversed(positions)):
+        icon_idx = len(positions) - 1 - i
+        if icon_idx >= len(new_infoboxes):
+            continue
+        new_icon = new_infoboxes[icon_idx]["icon"]
+        comment = markup[start:end]
+        comment = re.sub(r'"icon":"[^"]+"', f'"icon":"{new_icon}"', comment, count=1)
+        markup = markup[:start] + comment + markup[end:]
+    return markup
 
-    # Беремо перший блок як шаблон
-    template_start, template_end = positions[0]
-    template = markup[template_start:template_end]
 
-    # Будуємо нові блоки
-    new_blocks = []
-    for box in new_infoboxes:
-        block = template
-        # Замінюємо іконку в JSON-атрибутах
-        block = re.sub(r'"icon":"[^"]+"', f'"icon":"{box["icon"]}"', block)
-        # Замінюємо SVG (залишаємо старий — FA іконки рендеряться Spectra на льоту)
-        # Замінюємо заголовок info-box
-        block = re.sub(r'(<h3[^>]*>)[^<]*(</h3>)', rf'\g<1>{box["title"]}\g<2>', block)
-        # Замінюємо опис
-        block = re.sub(r'(<p class="uagb-ifb-desc">)[^<]*(</p>)', rf'\g<1>{box["desc"]}\g<2>', block)
-        # Новий унікальний block_id для контейнера і info-box
-        block = replace_block_ids(block)
-        new_blocks.append(block)
-
-    # Замінюємо всі старі info-box контейнери на нові
-    if not positions:
-        return markup
-
-    first_start = positions[0][0]
-    last_end = positions[-1][1]
-    # Знаходимо пробіл між блоками (зазвичай \n\n)
-    separator = "\n\n"
-    return markup[:first_start] + separator.join(new_blocks) + markup[last_end:]
+def strip_hero_background(markup: str) -> str:
+    """Прибирає фонове зображення з hero-контейнера — користувач додасть своє."""
+    # Знаходимо backgroundImageDesktop і замінюємо значення на {} (балансування дужок)
+    key = '"backgroundImageDesktop":'
+    result = markup
+    search_from = 0
+    while True:
+        pos = result.find(key, search_from)
+        if pos == -1:
+            break
+        val_start = pos + len(key)
+        if val_start < len(result) and result[val_start] == "{":
+            depth, i = 0, val_start
+            while i < len(result):
+                if result[i] == "{":
+                    depth += 1
+                elif result[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        result = result[:val_start] + "{}" + result[i + 1:]
+                        break
+                i += 1
+        search_from = pos + len(key)
+    return result
 
 
 def replace_block_ids(markup: str) -> str:
@@ -253,15 +262,8 @@ def apply_replacements(markup: str, replacements: list[dict]) -> str:
 def process_create_new(rec, client, wp, telegram_token, chat_id):
     """Створює новий запис: копіює Gutenberg-розмітку зразка,
     замінює тільки тексти через Claude, структуру блоків не чіпає."""
-    # Беремо перший опублікований пост як зразок
-    posts = wp._get("posts", {"per_page": 5, "status": "publish"})
-    if not posts:
-        send_message(telegram_token, chat_id,
-                     f"⚠️ #{rec['id']}: не знайшов жодного опублікованого запису-зразка.")
-        rec["status"] = "needs_manual_review"
-        return
-
-    reference_id = posts[0]["id"]
+    # Завжди використовуємо пост 1751 як зразок структури
+    reference_id = 1751
     reference_markup = wp.get_raw_content(reference_id, "posts")
 
     # Витягуємо тексти для заміни
@@ -281,17 +283,19 @@ def process_create_new(rec, client, wp, telegram_token, chat_id):
         raw_layout = call_claude(client, LAYOUT_PROMPT.format(
             title=rec["title"], description=rec["description"],
             infoboxes_json=json.dumps(infoboxes, ensure_ascii=False),
+            count=len(infoboxes),
         ), max_tokens=1000)
         layout_match = re.search(r"\[.*\]", raw_layout, re.DOTALL)
         new_infoboxes = json.loads(layout_match.group()) if layout_match else infoboxes
     else:
         new_infoboxes = []
 
-    # Застосовуємо: спочатку info-box (кількість + іконки), потім тексти, потім block_id
+    # Застосовуємо: спочатку іконки, потім тексти, потім видаляємо фон, потім block_id
     new_markup = reference_markup
     if new_infoboxes:
         new_markup = adjust_infobox_blocks(new_markup, new_infoboxes)
     new_markup = apply_replacements(new_markup, replacements)
+    new_markup = strip_hero_background(new_markup)
     new_markup = replace_block_ids(new_markup)
 
     # Заголовок
