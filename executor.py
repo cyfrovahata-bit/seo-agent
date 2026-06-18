@@ -48,6 +48,26 @@ TEXTS_REPLACEMENT_PROMPT = """\
 {texts_json}
 """
 
+LAYOUT_PROMPT = """\
+Ти — SEO-архітектор контенту. Тема нової статті:
+
+Завдання: {title}
+Опис: {description}
+
+Зразок має такі info-box блоки (назва + іконка Font Awesome):
+{infoboxes_json}
+
+Твоє завдання — повернути оновлений список info-box блоків для нової теми.
+Кількість блоків може бути РІЗНОЮ (від 2 до 6) — стільки, скільки реально потрібно.
+Для кожного блоку підбери відповідну іконку з Font Awesome (назва slug, наприклад:
+"chart-line", "search", "money-bill-wave", "users", "cog", "star", "check-circle").
+
+Поверни ТІЛЬКИ валідний JSON масив:
+[{{"title": "Назва блоку", "desc": "короткий опис", "icon": "fa-icon-slug"}}, ...]
+
+Жодних пояснень, тільки JSON.
+"""
+
 EDIT_EXISTING_PROMPT = """\
 Ти — SEO-редактор сайту cyfrovahata.com.ua. Потрібно ВНЕСТИ ТОЧКОВУ ПРАВКУ
 в УЖЕ ОПУБЛІКОВАНУ сторінку, не ламаючи решту розмітки.
@@ -122,6 +142,72 @@ def process_edit_existing(rec, client, wp, telegram_token, chat_id):
     rec["edit_link"] = revision["edit_link"]
 
 
+def extract_infoboxes(markup: str) -> list[dict]:
+    """Витягує info-box блоки: назва, опис, іконка."""
+    pattern = r'wp:uagb/info-box \{[^}]*"icon":"([^"]+)"[^}]*\}[^<]*<[^>]+>[^<]*<[^>]+>[^<]*<svg[^/]*/svg>[^<]*</div><div[^>]*><div[^>]*><h3[^>]*>([^<]*)</h3></div><p[^>]*>([^<]*)</p>'
+    results = []
+    for m in re.finditer(r'"icon":"([^"]+)".*?<h3[^>]*>([^<]*)</h3>.*?<p[^>]*>(.*?)</p>', markup):
+        results.append({"icon": m.group(1), "title": m.group(2), "desc": BeautifulSoup(m.group(3), "html.parser").get_text()})
+    return results
+
+
+def get_infobox_containers(markup: str) -> list[tuple[int, int]]:
+    """Знаходить позиції (start, end) кожного контейнера з info-box."""
+    positions = []
+    for m in re.finditer(r'<!-- wp:uagb/container \{[^}]*\} -->\s*<div[^>]*><!-- wp:uagb/info-box', markup):
+        start = m.start()
+        # Знаходимо кінець цього контейнера
+        depth = 0
+        i = start
+        while i < len(markup):
+            if markup[i:].startswith('<!-- wp:uagb/container'):
+                depth += 1
+            elif markup[i:].startswith('<!-- /wp:uagb/container -->'):
+                depth -= 1
+                if depth == 0:
+                    end = i + len('<!-- /wp:uagb/container -->')
+                    positions.append((start, end))
+                    break
+            i += 1
+    return positions
+
+
+def adjust_infobox_blocks(markup: str, new_infoboxes: list[dict]) -> str:
+    """Додає або видаляє info-box контейнери і замінює іконки та тексти."""
+    positions = get_infobox_containers(markup)
+    if not positions:
+        return markup
+
+    # Беремо перший блок як шаблон
+    template_start, template_end = positions[0]
+    template = markup[template_start:template_end]
+
+    # Будуємо нові блоки
+    new_blocks = []
+    for box in new_infoboxes:
+        block = template
+        # Замінюємо іконку в JSON-атрибутах
+        block = re.sub(r'"icon":"[^"]+"', f'"icon":"{box["icon"]}"', block)
+        # Замінюємо SVG (залишаємо старий — FA іконки рендеряться Spectra на льоту)
+        # Замінюємо заголовок info-box
+        block = re.sub(r'(<h3[^>]*>)[^<]*(</h3>)', rf'\g<1>{box["title"]}\g<2>', block)
+        # Замінюємо опис
+        block = re.sub(r'(<p class="uagb-ifb-desc">)[^<]*(</p>)', rf'\g<1>{box["desc"]}\g<2>', block)
+        # Новий унікальний block_id для контейнера і info-box
+        block = replace_block_ids(block)
+        new_blocks.append(block)
+
+    # Замінюємо всі старі info-box контейнери на нові
+    if not positions:
+        return markup
+
+    first_start = positions[0][0]
+    last_end = positions[-1][1]
+    # Знаходимо пробіл між блоками (зазвичай \n\n)
+    separator = "\n\n"
+    return markup[:first_start] + separator.join(new_blocks) + markup[last_end:]
+
+
 def replace_block_ids(markup: str) -> str:
     """Генерує нові унікальні block_id для всіх UAGB-блоків."""
     def new_id(_):
@@ -168,20 +254,33 @@ def process_create_new(rec, client, wp, telegram_token, chat_id):
     texts = extract_texts(reference_markup)
     texts_json = json.dumps(texts, ensure_ascii=False)
 
-    # Claude генерує тільки заміни текстів
+    # Claude генерує заміни текстів
     raw_response = call_claude(client, TEXTS_REPLACEMENT_PROMPT.format(
         title=rec["title"], description=rec["description"], texts_json=texts_json,
     ), max_tokens=4000)
-
-    # Парсимо JSON з відповіді
     json_match = re.search(r"\[.*\]", raw_response, re.DOTALL)
     replacements = json.loads(json_match.group()) if json_match else []
 
-    # Застосовуємо заміни і нові block_id
-    new_markup = apply_replacements(reference_markup, replacements)
+    # Claude генерує нові info-box блоки (іконки + кількість)
+    infoboxes = extract_infoboxes(reference_markup)
+    if infoboxes:
+        raw_layout = call_claude(client, LAYOUT_PROMPT.format(
+            title=rec["title"], description=rec["description"],
+            infoboxes_json=json.dumps(infoboxes, ensure_ascii=False),
+        ), max_tokens=1000)
+        layout_match = re.search(r"\[.*\]", raw_layout, re.DOTALL)
+        new_infoboxes = json.loads(layout_match.group()) if layout_match else infoboxes
+    else:
+        new_infoboxes = []
+
+    # Застосовуємо: спочатку info-box (кількість + іконки), потім тексти, потім block_id
+    new_markup = reference_markup
+    if new_infoboxes:
+        new_markup = adjust_infobox_blocks(new_markup, new_infoboxes)
+    new_markup = apply_replacements(new_markup, replacements)
     new_markup = replace_block_ids(new_markup)
 
-    # Заголовок — перший new текст що замінював h1/h2
+    # Заголовок
     new_title = rec["title"]
     for item in replacements:
         if len(item.get("new", "")) > 20:
