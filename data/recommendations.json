@@ -1,81 +1,34 @@
 [
   {
-    "title": "Додати SEO title і meta description на /seo-prosuvannya-saitiv/",
-    "description": "Сторінка вже збирає покази за комерційним запитом «просування сайту в гугл ціна», але SEO title і meta description порожні. Прописати: Title — «SEO просування сайту в Google — від 120$/міс | Цифрова Хата», meta description — 130-150 символів з УТП, ціною та CTA.",
-    "type": "onpage",
+    "title": "Перевірити індексацію блогових статей",
+    "description": "Три блогові статті (/chomu-sait-ne-prynosyt-kliientiv/, /yak-vybraty-kompaniiu-dlia-rozrobky-saitu/, /skilky-koshtuie-sait-pid-kliuch-v-ukraini/) не з'явились у Search Console. Перевірити через Google Search Console → URL Inspection кожну сторінку. Якщо не проіндексовані — запустити ручну індексацію.",
+    "type": "technical",
     "priority": "high",
     "action": "edit_existing",
-    "target_page_path": "/seo-prosuvannya-saitiv/",
+    "target_page_path": null,
     "id": 1,
-    "status": "dismissed",
-    "created": "2026-06-18",
-    "dismiss_reason": "SEO title і meta description вже заповнені через Rank Math"
+    "status": "pending",
+    "created": "2026-06-18"
   },
   {
-    "title": "Перевірити та заповнити SEO title і meta description на головній сторінці",
-    "description": "Головна вже індексується за запитами «розробка сайту» і «просування сайтів ужгород». Переконатись, що title містить геолокацію (Ужгород / Україна) і ключовий напрям, meta description — чіткий оффер із CTA.",
-    "type": "onpage",
+    "title": "Додати внутрішні посилання зі статей на комерційні сторінки",
+    "description": "Стаття /chomu-sait-ne-prynosyt-kliientiv/ тематично прямо пов'язана з /pidtrymka-saitiv/ та /seo-prosuvannya-saitiv/. Стаття /skilky-koshtuie-sait-pid-kliuch-v-ukraini/ — з /rozrobka-saitiv-pid-kliuch/. Додати 1–2 контекстних посилання всередині тексту кожної статті на відповідну комерційну сторінку. Це пришвидшить передачу ваги та допоможе Google зрозуміти структуру сайту.",
+    "type": "technical",
     "priority": "high",
     "action": "edit_existing",
-    "target_page_path": "/",
+    "target_page_path": "/chomu-sait-ne-prynosyt-kliientiv/",
     "id": 2,
-    "status": "dismissed",
-    "created": "2026-06-18",
-    "dismiss_reason": "SEO title і meta description вже заповнені через Rank Math"
+    "status": "pending",
+    "created": "2026-06-18"
   },
   {
-    "title": "Створити окрему сторінку «Розробка сайтів»",
-    "description": "Головна збирає покази за «розробка сайту» (позиція ~24), але окремої посадкової сторінки для цього напряму немає. Створити /rozrobka-saitiv/ з повноцінним описом послуги, щоб не конкурувати головною сторінкою за комерційний трафік.",
+    "title": "Створити нову статтю під запит 'просування сайту в гугл ціна'",
+    "description": "Запит 'просування сайту в гугл ціна' вже дає 13 показів на /seo-prosuvannya-saitiv/ з позиції ~98. Однак комерційна сторінка не є ідеальним форматом для цього інформаційного запиту. Створити окрему статтю типу 'Скільки коштує SEO просування в Україні у 2026 році?' з розбивкою по пакетах, факторах ціни і прикладами. Всередині — посилання на /seo-prosuvannya-saitiv/. Це дозволить покрити запит окремою сторінкою без канібалізації.",
     "type": "content",
     "priority": "medium",
     "action": "create_new",
-    "target_page_path": "/rozrobka-saitiv/",
+    "target_page_path": null,
     "id": 3,
-    "status": "dismissed",
-    "dismiss_reason": "Сторінка вже існує за адресою /rozrobka-saitiv-pid-kliuch/",
-    "created": "2026-06-18"
-  },
-  {
-    "title": "Додати SEO title і meta description на /pro-nas-cyfrovahata/",
-    "description": "Сторінка «Про нас» не має SEO title і meta description. Заповнити: Title — «Про нас — Цифрова Хата | Розробка сайтів та SEO в Україні», meta description — 130-150 символів з коротким описом команди та УТП (працюємо напряму, результат у день звернення).",
-    "type": "onpage",
-    "priority": "medium",
-    "action": "edit_existing",
-    "target_page_path": "/pro-nas-cyfrovahata/",
-    "id": 4,
-    "status": "pending",
-    "created": "2026-06-18"
-  },
-  {
-    "title": "Додати SEO title і meta description на /kontakty/",
-    "description": "Сторінка контактів без SEO title і meta description. Прописати: Title — «Контакти — Цифрова Хата | Розробка сайтів та SEO», meta description — з акцентом на швидку відповідь (15 хв), Telegram, Україна.",
-    "type": "onpage",
-    "priority": "medium",
-    "action": "edit_existing",
-    "target_page_path": "/kontakty/",
-    "id": 5,
-    "status": "pending",
-    "created": "2026-06-18"
-  },
-  {
-    "title": "Додати SEO title і meta description на сторінках блогу",
-    "description": "Три статті (/chomu-sait-ne-prynosyt-kliientiv/, /yak-vybraty-kompaniiu-dlia-rozrobky-saitu/, /skilky-koshtuie-sait-pid-kliuch-v-ukraini/) не мають SEO title і meta description. Для кожної прописати унікальний title (до 60 символів) і meta description (130-150 символів) із ключовим запитом статті та CTA. Пріоритет — /skilky-koshtuie-sait-pid-kliuch-v-ukraini/ (комерційний намір).",
-    "type": "onpage",
-    "priority": "medium",
-    "action": "edit_existing",
-    "target_page_path": "/skilky-koshtuie-sait-pid-kliuch-v-ukraini/",
-    "id": 6,
-    "status": "pending",
-    "created": "2026-06-18"
-  },
-  {
-    "title": "Додати геолокаційний блок або окрему сторінку під запит «просування сайтів ужгород»",
-    "description": "Запит «просування сайтів ужгород» вже дає показ з позицією 1 на головній — сигнал, що Google асоціює сайт з цим регіоном. Додати на головну невеликий текстовий блок (2-3 речення) з явною згадкою Ужгорода та Закарпаття як регіону роботи. Альтернатива — окрема посадкова сторінка /seo-prosuvannya-uzhhorod/ з таргетом на локальні запити. Починати з блоку на головній — менший ризик, швидше в індексі.",
-    "type": "content",
-    "priority": "medium",
-    "action": "edit_existing",
-    "target_page_path": "/",
-    "id": 7,
     "status": "pending",
     "created": "2026-06-18"
   }
