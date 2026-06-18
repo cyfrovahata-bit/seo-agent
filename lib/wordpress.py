@@ -35,7 +35,7 @@ class WordPressClient:
 
     def list_content(self, post_type: str = "posts", per_page: int = 50) -> list[dict]:
         """Короткий список (id, title, slug, link) — для огляду структури сайту."""
-        items = self._get(post_type, {"per_page": per_page, "status": "publish,draft"})
+        items = self._get(post_type, {"per_page": per_page, "status": "publish"})
         return [
             {
                 "id": item["id"],
@@ -55,9 +55,9 @@ class WordPressClient:
         ]
 
     def get_raw_content(self, post_id: int, post_type: str = "posts") -> str:
-        """Повертає Gutenberg/HTML-розмітку запису — саме її копіює стиль агент-виконавець."""
-        item = self._get(f"{post_type}/{post_id}", {"context": "edit"})
-        return item["content"]["raw"]
+        """Повертає HTML-контент запису для використання як зразок."""
+        item = self._get(f"{post_type}/{post_id}")
+        return item["content"]["rendered"]
 
     def create_draft(self, title: str, content: str, post_type: str = "posts") -> dict:
         """Для НОВОГО контенту, якого ще не існує на сайті — створює запис
