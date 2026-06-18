@@ -7,7 +7,8 @@
     "action": "edit_existing",
     "target_page_path": "/seo-prosuvannya-saitiv/",
     "id": 1,
-    "status": "pending",
+    "status": "dismissed",
+    "dismiss_reason": "Ціновий блок вже є на сторінці (пакети Старт/Ріст/Результат від 120$/міс)",
     "created": "2026-06-18"
   },
   {
