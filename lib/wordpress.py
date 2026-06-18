@@ -1,0 +1,91 @@
+"""
+Робота з WordPress REST API через Application Passwords.
+ВАЖЛИВО: цей модуль НІКОЛИ не публікує контент напряму — create_draft
+завжди створює запис зі статусом "draft". Публікація лишається за людиною
+у wp-admin. Це і є той самий захист "не зламати сайт".
+"""
+
+import requests
+
+
+class WordPressClient:
+    def __init__(self, base_url: str, username: str, app_password: str):
+        self.base_url = base_url.rstrip("/")
+        self.auth = (username, app_password)
+
+    def _get(self, path: str, params: dict | None = None):
+        resp = requests.get(
+            f"{self.base_url}/wp-json/wp/v2/{path}",
+            params=params or {},
+            auth=self.auth,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _post(self, path: str, payload: dict):
+        resp = requests.post(
+            f"{self.base_url}/wp-json/wp/v2/{path}",
+            json=payload,
+            auth=self.auth,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_content(self, post_type: str = "posts", per_page: int = 50) -> list[dict]:
+        """Короткий список (id, title, slug, link) — для огляду структури сайту."""
+        items = self._get(post_type, {"per_page": per_page, "status": "publish,draft"})
+        return [
+            {
+                "id": item["id"],
+                "title": item["title"]["rendered"],
+                "slug": item["slug"],
+                "link": item["link"],
+            }
+            for item in items
+        ]
+
+    def search_content(self, query: str, post_type: str = "posts") -> list[dict]:
+        """Пошук схожих за змістом сторінок/постів — щоб знайти зразок дизайну."""
+        items = self._get(post_type, {"search": query, "per_page": 5})
+        return [
+            {"id": i["id"], "title": i["title"]["rendered"], "slug": i["slug"]}
+            for i in items
+        ]
+
+    def get_raw_content(self, post_id: int, post_type: str = "posts") -> str:
+        """Повертає Gutenberg/HTML-розмітку запису — саме її копіює стиль агент-виконавець."""
+        item = self._get(f"{post_type}/{post_id}", {"context": "edit"})
+        return item["content"]["raw"]
+
+    def create_draft(self, title: str, content: str, post_type: str = "posts") -> dict:
+        """Для НОВОГО контенту, якого ще не існує на сайті — створює запис
+        зі статусом draft (це безпечно, бо живої версії ще немає)."""
+        result = self._post(post_type, {
+            "title": title,
+            "content": content,
+            "status": "draft",
+        })
+        return {
+            "id": result["id"],
+            "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
+        }
+
+    def find_by_slug(self, slug: str, post_type: str = "posts") -> dict | None:
+        """Знаходить ОПУБЛІКОВАНИЙ запис за slug (останнім сегментом URL)."""
+        items = self._get(post_type, {"slug": slug})
+        return items[0] if items else None
+
+    def propose_revision(self, post_id: int, content: str, post_type: str = "posts") -> dict:
+        """Для ВЖЕ ОПУБЛІКОВАНОЇ сторінки: НЕ змінює статус і НЕ чіпає живий
+        контент. Натомість створює автозбереження (autosave/revision),
+        прикріплене до цього запису — точно так само, як WordPress робить
+        це сам, коли ти редагуєш сторінку в редакторі, але ще не натиснув
+        "Оновити". Жива сторінка лишається незмінною, доки людина сама
+        не відкриє редактор і не підтвердить зміну."""
+        result = self._post(f"{post_type}/{post_id}/autosaves", {"content": content})
+        return {
+            "id": result["id"],
+            "edit_link": f"{self.base_url}/wp-admin/post.php?post={post_id}&action=edit",
+        }
