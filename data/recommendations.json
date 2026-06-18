@@ -18,8 +18,9 @@
     "action": "create_new",
     "target_page_path": "/seo-prosuvannya-saitiv-uzhhorod/",
     "id": 2,
-    "status": "pending",
-    "created": "2026-06-18"
+    "status": "draft_ready",
+    "created": "2026-06-18",
+    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1822&action=edit"
   },
   {
     "title": "Перевірити технічну швидкість /seo-prosuvannya-saitiv/",
