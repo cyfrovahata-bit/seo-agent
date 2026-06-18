@@ -13,10 +13,13 @@
 """
 
 import datetime
+import json
 import os
 import re
+import uuid
 
 import anthropic
+from bs4 import BeautifulSoup
 
 from lib.google_seo import get_search_console_data, get_ga4_data
 from lib.metrics import find_page_metrics, IMPACT_REVIEW_DAYS
@@ -26,44 +29,23 @@ from lib.wordpress import WordPressClient
 
 MODEL = "claude-sonnet-4-6"
 
-PICK_REFERENCE_PROMPT = """\
-Ти — SEO-агент, що готується створити НОВИЙ контент на сайті cyfrovahata.com.ua
-за завданням нижче. Перед генерацією тобі потрібен зразок існуючого дизайну/стилю.
+TEXTS_REPLACEMENT_PROMPT = """\
+Ти — SEO-копірайтер. Тобі потрібно написати нові тексти для статті на тему:
 
 Завдання: {title}
 Опис: {description}
 
-Ось короткий список існуючих сторінок/постів сайту (id, заголовок, slug):
-{content_list}
+Нижче — список текстових рядків з існуючої статті-зразка. Для КОЖНОГО рядка
+напиши новий текст відповідно до нової теми, зберігаючи приблизно ту ж довжину
+і стиль (діловий, українська мова).
 
-Поверни ОДНЕ слово чи коротку фразу — пошуковий запит, за яким можна знайти
-найбільш схожу за тематикою/структурою сторінку для пошуку через WordPress search
-(наприклад: "оренда ноутбук" або "блог техніка"). Нічого, крім цього запиту, не пиши.
-"""
+Поверни ТІЛЬКИ валідний JSON масив об'єктів:
+[{{"old": "оригінальний текст", "new": "новий текст"}}, ...]
 
-GENERATE_NEW_PROMPT = """\
-Ти — верстальник сайту cyfrovahata.com.ua. Твоє завдання — створити НОВИЙ запис,
-який виглядає ІДЕНТИЧНО зразку: та сама структура блоків, ті ж самі CSS-класи,
-той самий порядок секцій.
+Жодних пояснень, тільки JSON.
 
-Завдання: {title}
-Опис: {description}
-
-Нижче — ПОВНА Gutenberg-розмітка існуючого запису-зразка. Скопіюй її ПОВНІСТЮ,
-замінивши ЛИШЕ:
-- Тексти (заголовки, абзаци, підписи) — на нові відповідно до теми
-- URL зображень — залиш ті самі (агент не має доступу до медіатеки)
-- Іконки — залиш без змін
-
-НЕ змінюй: wp:block імена, атрибути класів, структуру вкладеності, порядок блоків.
-НЕ додавай і НЕ видаляй блоки — тільки текстовий вміст.
-
----ЗРАЗОК---
-{reference_content}
----КІНЕЦЬ ЗРАЗКА---
-
-Перший рядок відповіді: TITLE: <заголовок запису>
-Далі — повна Gutenberg-розмітка без жодних пояснень.
+Тексти для заміни:
+{texts_json}
 """
 
 EDIT_EXISTING_PROMPT = """\
@@ -140,49 +122,77 @@ def process_edit_existing(rec, client, wp, telegram_token, chat_id):
     rec["edit_link"] = revision["edit_link"]
 
 
+def replace_block_ids(markup: str) -> str:
+    """Генерує нові унікальні block_id для всіх UAGB-блоків."""
+    def new_id(_):
+        return f'"block_id":"{uuid.uuid4().hex[:8]}"'
+    return re.sub(r'"block_id":"[a-f0-9]+"', new_id, markup)
+
+
+def extract_texts(markup: str) -> list[str]:
+    """Витягує текстові рядки з HTML-розмітки (h1-h4, p, li), довші за 10 символів."""
+    soup = BeautifulSoup(markup, "html.parser")
+    seen, texts = set(), []
+    for tag in soup.find_all(["h1", "h2", "h3", "h4", "p", "li"]):
+        t = tag.get_text(strip=True)
+        if len(t) > 10 and t not in seen:
+            seen.add(t)
+            texts.append(t)
+    return texts
+
+
+def apply_replacements(markup: str, replacements: list[dict]) -> str:
+    """Замінює тексти в розмітці за списком {old, new}."""
+    for item in replacements:
+        old, new = item.get("old", ""), item.get("new", "")
+        if old and new and old != new:
+            markup = markup.replace(old, new)
+    return markup
+
+
 def process_create_new(rec, client, wp, telegram_token, chat_id):
-    """Створення нового контенту, якого ще немає на сайті — це безпечно
-    оформити як звичайну чернетку (draft), бо живої версії ще не існує."""
-    content_list = wp.list_content("posts") + wp.list_content("pages")
-    listing_text = "\n".join(f"#{c['id']} {c['title']} ({c['slug']})" for c in content_list)
-
-    search_query = call_claude(client, PICK_REFERENCE_PROMPT.format(
-        title=rec["title"], description=rec["description"], content_list=listing_text,
-    ), max_tokens=50)
-
-    reference, post_type = None, None
-    for candidate_type in ("posts", "pages"):
-        found = wp.search_content(search_query, candidate_type)
-        if found:
-            reference, post_type = found[0], candidate_type
-            break
-
-    if reference is None:
+    """Створює новий запис: копіює Gutenberg-розмітку зразка,
+    замінює тільки тексти через Claude, структуру блоків не чіпає."""
+    # Беремо перший опублікований пост як зразок
+    posts = wp._get("posts", {"per_page": 5, "status": "publish"})
+    if not posts:
         send_message(telegram_token, chat_id,
-                      f"⚠️ #{rec['id']}: не знайшов схожої сторінки-зразка для \"{rec['title']}\". "
-                      f"Потрібно зробити вручну.")
+                     f"⚠️ #{rec['id']}: не знайшов жодного опублікованого запису-зразка.")
         rec["status"] = "needs_manual_review"
         return
 
-    reference_content = wp.get_raw_content(reference["id"], post_type)
+    reference_id = posts[0]["id"]
+    reference_markup = wp.get_raw_content(reference_id, "posts")
 
-    generated = call_claude(client, GENERATE_NEW_PROMPT.format(
-        title=rec["title"], description=rec["description"], reference_content=reference_content,
-    ))
+    # Витягуємо тексти для заміни
+    texts = extract_texts(reference_markup)
+    texts_json = json.dumps(texts, ensure_ascii=False)
 
-    title_match = re.match(r"TITLE:\s*(.+)", generated)
-    if title_match:
-        new_title = title_match.group(1).strip()
-        new_content = generated[title_match.end():].strip()
-    else:
-        new_title = rec["title"]
-        new_content = generated
+    # Claude генерує тільки заміни текстів
+    raw_response = call_claude(client, TEXTS_REPLACEMENT_PROMPT.format(
+        title=rec["title"], description=rec["description"], texts_json=texts_json,
+    ), max_tokens=4000)
 
-    draft = wp.create_draft(new_title, new_content, post_type)
+    # Парсимо JSON з відповіді
+    json_match = re.search(r"\[.*\]", raw_response, re.DOTALL)
+    replacements = json.loads(json_match.group()) if json_match else []
+
+    # Застосовуємо заміни і нові block_id
+    new_markup = apply_replacements(reference_markup, replacements)
+    new_markup = replace_block_ids(new_markup)
+
+    # Заголовок — перший new текст що замінював h1/h2
+    new_title = rec["title"]
+    for item in replacements:
+        if len(item.get("new", "")) > 20:
+            new_title = item["new"]
+            break
+
+    draft = wp.create_draft(new_title, new_markup, "posts")
 
     send_message(telegram_token, chat_id,
-                  f"✅ Нову чернетку за рекомендацією #{rec['id']} (\"{rec['title']}\") створено.\n"
-                  f"Перевір і опублікуй вручну: {draft['edit_link']}")
+                 f"✅ Нову чернетку за рекомендацією #{rec['id']} (\"{rec['title']}\") створено.\n"
+                 f"Перевір і опублікуй вручну: {draft['edit_link']}")
 
     rec["status"] = "draft_ready"
     rec["edit_link"] = draft["edit_link"]
