@@ -1,1 +1,35 @@
-[]
+[
+  {
+    "title": "Додати SEO title і meta description на /seo-prosuvannya-saitiv/",
+    "description": "Сторінка вже збирає покази за комерційним запитом «просування сайту в гугл ціна», але SEO title і meta description порожні. Прописати: Title — «SEO просування сайту в Google — від 120$/міс | Цифрова Хата», meta description — 130-150 символів з УТП, ціною та CTA.",
+    "type": "onpage",
+    "priority": "high",
+    "action": "edit_existing",
+    "target_page_path": "/seo-prosuvannya-saitiv/",
+    "id": 1,
+    "status": "pending",
+    "created": "2026-06-18"
+  },
+  {
+    "title": "Перевірити та заповнити SEO title і meta description на головній сторінці",
+    "description": "Головна вже індексується за запитами «розробка сайту» і «просування сайтів ужгород». Переконатись, що title містить геолокацію (Ужгород / Україна) і ключовий напрям, meta description — чіткий оффер із CTA.",
+    "type": "onpage",
+    "priority": "high",
+    "action": "edit_existing",
+    "target_page_path": "/",
+    "id": 2,
+    "status": "pending",
+    "created": "2026-06-18"
+  },
+  {
+    "title": "Створити окрему сторінку «Розробка сайтів»",
+    "description": "Головна збирає покази за «розробка сайту» (позиція ~24), але окремої посадкової сторінки для цього напряму немає. Створити /rozrobka-saitiv/ з повноцінним описом послуги, щоб не конкурувати головною сторінкою за комерційний трафік.",
+    "type": "content",
+    "priority": "medium",
+    "action": "create_new",
+    "target_page_path": "/rozrobka-saitiv/",
+    "id": 3,
+    "status": "pending",
+    "created": "2026-06-18"
+  }
+]
