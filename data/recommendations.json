@@ -7,8 +7,9 @@
     "action": "edit_existing",
     "target_page_path": "/seo-prosuvannya-saitiv/",
     "id": 1,
-    "status": "pending",
-    "created": "2026-06-18"
+    "status": "dismissed",
+    "created": "2026-06-18",
+    "dismiss_reason": "SEO title і meta description вже заповнені через Rank Math"
   },
   {
     "title": "Перевірити та заповнити SEO title і meta description на головній сторінці",
@@ -18,8 +19,9 @@
     "action": "edit_existing",
     "target_page_path": "/",
     "id": 2,
-    "status": "pending",
-    "created": "2026-06-18"
+    "status": "dismissed",
+    "created": "2026-06-18",
+    "dismiss_reason": "SEO title і meta description вже заповнені через Rank Math"
   },
   {
     "title": "Створити окрему сторінку «Розробка сайтів»",
@@ -63,6 +65,17 @@
     "action": "edit_existing",
     "target_page_path": "/skilky-koshtuie-sait-pid-kliuch-v-ukraini/",
     "id": 6,
+    "status": "pending",
+    "created": "2026-06-18"
+  },
+  {
+    "title": "Додати геолокаційний блок або окрему сторінку під запит «просування сайтів ужгород»",
+    "description": "Запит «просування сайтів ужгород» вже дає показ з позицією 1 на головній — сигнал, що Google асоціює сайт з цим регіоном. Додати на головну невеликий текстовий блок (2-3 речення) з явною згадкою Ужгорода та Закарпаття як регіону роботи. Альтернатива — окрема посадкова сторінка /seo-prosuvannya-uzhhorod/ з таргетом на локальні запити. Починати з блоку на головній — менший ризик, швидше в індексі.",
+    "type": "content",
+    "priority": "medium",
+    "action": "edit_existing",
+    "target_page_path": "/",
+    "id": 7,
     "status": "pending",
     "created": "2026-06-18"
   }

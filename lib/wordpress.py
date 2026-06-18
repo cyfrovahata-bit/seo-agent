@@ -72,6 +72,21 @@ class WordPressClient:
             "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
         }
 
+    def _fetch_seo_tags(self, url: str) -> dict:
+        """Витягує <title> і <meta name=description> з реального HTML сторінки."""
+        from bs4 import BeautifulSoup
+        try:
+            resp = requests.get(url, timeout=15)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            title_tag = soup.find("title")
+            desc_tag = soup.find("meta", attrs={"name": "description"})
+            return {
+                "seo_title": title_tag.get_text(strip=True) if title_tag else "",
+                "meta_description": desc_tag.get("content", "") if desc_tag else "",
+            }
+        except Exception:
+            return {"seo_title": "", "meta_description": ""}
+
     def get_page_snapshot(self, slug: str) -> dict | None:
         """Повертає title, meta description і текстовий вміст сторінки за slug.
         Шукає спочатку в pages, потім у posts."""

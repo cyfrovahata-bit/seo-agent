@@ -97,11 +97,12 @@ def build_page_snapshots(wp: WordPressClient) -> dict:
             raw_html = item["content"].get("rendered", "")
             soup = BeautifulSoup(raw_html, "html.parser")
             text = " ".join(soup.get_text(" ", strip=True).split())[:2000]
-            yoast = item.get("yoast_head_json") or {}
+            # Rank Math не передає SEO-поля через REST — беремо з реального HTML
+            seo_tags = wp._fetch_seo_tags(link)
             snapshots[path] = {
                 "title": item["title"].get("rendered", ""),
-                "meta_description": yoast.get("description", ""),
-                "seo_title": yoast.get("title", ""),
+                "seo_title": seo_tags["seo_title"],
+                "meta_description": seo_tags["meta_description"],
                 "text_content": text,
             }
     return snapshots
