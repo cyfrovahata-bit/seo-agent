@@ -72,6 +72,27 @@ class WordPressClient:
             "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
         }
 
+    def get_page_snapshot(self, slug: str) -> dict | None:
+        """Повертає title, meta description і текстовий вміст сторінки за slug.
+        Шукає спочатку в pages, потім у posts."""
+        from bs4 import BeautifulSoup
+        for post_type in ("pages", "posts"):
+            items = self._get(post_type, {"slug": slug})
+            if not items:
+                continue
+            item = items[0]
+            raw_html = item["content"].get("rendered", "")
+            soup = BeautifulSoup(raw_html, "html.parser")
+            text = " ".join(soup.get_text(" ", strip=True).split())[:3000]
+            yoast = item.get("yoast_head_json") or {}
+            return {
+                "title": item["title"].get("rendered", ""),
+                "meta_description": yoast.get("description", ""),
+                "seo_title": yoast.get("title", ""),
+                "text_content": text,
+            }
+        return None
+
     def find_by_slug(self, slug: str, post_type: str = "posts") -> dict | None:
         """Знаходить ОПУБЛІКОВАНИЙ запис за slug (останнім сегментом URL)."""
         items = self._get(post_type, {"slug": slug})

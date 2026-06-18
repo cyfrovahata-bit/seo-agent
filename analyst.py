@@ -21,6 +21,7 @@ from lib.google_seo import get_search_console_data, get_ga4_data
 from lib.metrics import aggregate_site_totals, find_page_metrics, IMPACT_REVIEW_DAYS
 from lib.state import load_json, save_json
 from lib.telegram import send_message
+from lib.wordpress import WordPressClient
 
 MODEL = "claude-sonnet-4-6"
 MAX_HISTORY_WEEKS = 52  # не тримати знімки довше ~року
@@ -51,6 +52,11 @@ SYSTEM_PROMPT = """\
 - НІКОЛИ не пропонуй "переписати сторінку" без конкретної причини; рекомендації
   завжди точкові (один блок / один title / одна нова сторінка тощо).
 - Не повторюй рекомендації, які вже є у наданому відкритому бэклозі.
+- ОБОВ'ЯЗКОВО перевіряй розділ "РЕАЛЬНИЙ ВМІСТ СТОРІНОК" перед будь-якою контентною
+  рекомендацією. Якщо елемент (ціновий блок, FAQ, CTA тощо) вже є на сторінці — НЕ
+  пропонуй його додавати.
+- Сторінки із розділу "⛔ НЕ ПРОПОНУЙ нових змін" — повністю пропускай при генерації
+  рекомендацій. Зміна вже внесена, потрібен час для індексації та оцінки ефекту.
 - Пиши українською, по-діловому, без зайвої води.
 
 ФОРМАТ ВІДПОВІДІ (рівно два блоки):
@@ -76,6 +82,51 @@ def build_trend_table(history: list[dict]) -> str:
         t = entry["site_totals"]
         lines.append(f"{entry['date']} | {t['clicks']} | {t['impressions']} | {t['sessions']} | {t['users']}")
     return "\n".join(lines)
+
+
+def build_page_snapshots(gsc_data: list[dict], wp: WordPressClient) -> dict:
+    """Витягує вміст унікальних сторінок із WordPress для перевірки що вже є."""
+    slugs = set()
+    for row in gsc_data:
+        page = row.get("page", "")
+        # витягуємо slug з URL: /seo-prosuvannya-saitiv/ → seo-prosuvannya-saitiv
+        parts = [p for p in page.rstrip("/").split("/") if p]
+        if parts:
+            slugs.add(parts[-1] if parts[-1] else "__home__")
+        else:
+            slugs.add("__home__")
+    snapshots = {}
+    for slug in slugs:
+        if slug == "__home__":
+            snap = wp.get_page_snapshot("")
+            if snap is None:
+                # спробуємо slug головної
+                items = wp._get("pages", {"per_page": 1, "parent": 0})
+                snap = {"title": "Головна", "meta_description": "", "seo_title": "", "text_content": ""}
+            snapshots["/"] = snap
+        else:
+            snap = wp.get_page_snapshot(slug)
+            if snap:
+                snapshots[f"/{slug}/"] = snap
+    return snapshots
+
+
+def build_frozen_pages(backlog: list[dict], today: datetime.date) -> dict:
+    """Сторінки з нещодавно опублікованими змінами — чекаємо результату."""
+    frozen = {}
+    for rec in backlog:
+        if rec.get("status") == "published" and not rec.get("impact_checked"):
+            published_date = datetime.date.fromisoformat(rec["published_date"])
+            days_left = IMPACT_REVIEW_DAYS - (today - published_date).days
+            if days_left > 0:
+                page = rec.get("target_page_path") or "/"
+                if page not in frozen:
+                    frozen[page] = []
+                frozen[page].append({
+                    "title": rec["title"],
+                    "days_left": days_left,
+                })
+    return frozen
 
 
 def build_impact_reviews(backlog: list[dict], gsc_data: list[dict], ga4_data: list[dict],
@@ -126,9 +177,31 @@ def main():
     history = load_json("metrics_history.json", default=[])
     backlog = load_json("recommendations.json", default=[])
 
+    wp = WordPressClient(os.environ["WP_BASE_URL"], os.environ["WP_USERNAME"], os.environ["WP_APP_PASSWORD"])
+    page_snapshots = build_page_snapshots(gsc_data, wp)
+    frozen_pages = build_frozen_pages(backlog, today)
     impact_reviews = build_impact_reviews(backlog, gsc_data, ga4_data, today)
     open_backlog = [r for r in backlog if r["status"] == "pending"]
     trend_table = build_trend_table(history[-12:])
+
+    frozen_text = ""
+    if frozen_pages:
+        lines = ["⛔ НЕ ПРОПОНУЙ нових змін для цих сторінок — зміни вже внесені, чекаємо результату:"]
+        for page, changes in frozen_pages.items():
+            for ch in changes:
+                lines.append(f"  {page} → «{ch['title']}» (ще {ch['days_left']} днів до оцінки)")
+        frozen_text = "\n".join(lines)
+
+    snapshots_text = ""
+    if page_snapshots:
+        lines = ["РЕАЛЬНИЙ ВМІСТ СТОРІНОК (що вже є на сайті — НЕ пропонуй те, що вже присутнє):"]
+        for path, snap in page_snapshots.items():
+            lines.append(f"\n--- {path} ---")
+            lines.append(f"Title: {snap['title']}")
+            lines.append(f"SEO title: {snap['seo_title']}")
+            lines.append(f"Meta description: {snap['meta_description']}")
+            lines.append(f"Текст: {snap['text_content'][:1000]}")
+        snapshots_text = "\n".join(lines)
 
     user_message = f"""
 ДОВГОСТРОКОВИЙ ТРЕНД ПО САЙТУ (останні тижні):
@@ -139,6 +212,10 @@ def main():
 
 ДЕТАЛЬНІ ДАНІ ЦЬОГО ТИЖНЯ — Google Analytics (сторінка, сесії, користувачі, відмови, тривалість):
 {ga4_data}
+
+{snapshots_text}
+
+{frozen_text}
 
 ВІДКРИТИЙ БЭКЛОГ (вже запропоновані, ще НЕ виконані рекомендації — не дублюй):
 {open_backlog if open_backlog else "Порожньо."}
