@@ -29,7 +29,8 @@
     "action": "create_new",
     "target_page_path": null,
     "id": 3,
-    "status": "pending",
-    "created": "2026-06-18"
+    "status": "draft_ready",
+    "created": "2026-06-18",
+    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1797&action=edit"
   }
 ]
