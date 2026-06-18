@@ -1,36 +1,35 @@
 [
   {
-    "title": "Перевірити індексацію блогових статей",
-    "description": "Три блогові статті (/chomu-sait-ne-prynosyt-kliientiv/, /yak-vybraty-kompaniiu-dlia-rozrobky-saitu/, /skilky-koshtuie-sait-pid-kliuch-v-ukraini/) не з'явились у Search Console. Перевірити через Google Search Console → URL Inspection кожну сторінку. Якщо не проіндексовані — запустити ручну індексацію.",
-    "type": "technical",
+    "title": "Додати блок кейсів/результатів на SEO-сторінку",
+    "description": "На /seo-prosuvannya-saitiv/ відсутні конкретні приклади результатів роботи. Додати блок із 2-3 прикладами: ніша клієнта, що зробили, який результат (трафік, заявки). Це підсилить релевантність під запити типу 'просування сайту в гугл ціна' і знизить bounce rate.",
+    "type": "content",
     "priority": "high",
     "action": "edit_existing",
-    "target_page_path": null,
+    "target_page_path": "/seo-prosuvannya-saitiv/",
     "id": 1,
     "status": "pending",
     "created": "2026-06-18"
   },
   {
-    "title": "Додати внутрішні посилання зі статей на комерційні сторінки",
-    "description": "Стаття /chomu-sait-ne-prynosyt-kliientiv/ тематично прямо пов'язана з /pidtrymka-saitiv/ та /seo-prosuvannya-saitiv/. Стаття /skilky-koshtuie-sait-pid-kliuch-v-ukraini/ — з /rozrobka-saitiv-pid-kliuch/. Додати 1–2 контекстних посилання всередині тексту кожної статті на відповідну комерційну сторінку. Це пришвидшить передачу ваги та допоможе Google зрозуміти структуру сайту.",
-    "type": "technical",
-    "priority": "high",
-    "action": "edit_existing",
-    "target_page_path": "/chomu-sait-ne-prynosyt-kliientiv/",
+    "title": "Створити окрему сторінку під локальний запит 'просування сайтів Ужгород'",
+    "description": "Головна вже показується на позиції 1 за запитом 'просування сайтів Ужгород' — є локальний попит. Окрема сторінка /seo-prosuvannya-saitiv-uzhhorod/ дозволить цілеспрямовано закрити локальний трафік і не розмивати головну.",
+    "type": "content",
+    "priority": "medium",
+    "action": "create_new",
+    "target_page_path": "/seo-prosuvannya-saitiv-uzhhorod/",
     "id": 2,
     "status": "pending",
     "created": "2026-06-18"
   },
   {
-    "title": "Створити нову статтю під запит 'просування сайту в гугл ціна'",
-    "description": "Запит 'просування сайту в гугл ціна' вже дає 13 показів на /seo-prosuvannya-saitiv/ з позиції ~98. Однак комерційна сторінка не є ідеальним форматом для цього інформаційного запиту. Створити окрему статтю типу 'Скільки коштує SEO просування в Україні у 2026 році?' з розбивкою по пакетах, факторах ціни і прикладами. Всередині — посилання на /seo-prosuvannya-saitiv/. Це дозволить покрити запит окремою сторінкою без канібалізації.",
-    "type": "content",
-    "priority": "medium",
-    "action": "create_new",
-    "target_page_path": null,
+    "title": "Перевірити технічну швидкість /seo-prosuvannya-saitiv/",
+    "description": "Середня тривалість сесії 1.6 сек при bounce 100% може свідчити про повільне завантаження або проблему з рендерингом на мобільних. Перевірити PageSpeed Insights, виправити Core Web Vitals якщо є просідання.",
+    "type": "technical",
+    "priority": "high",
+    "action": "edit_existing",
+    "target_page_path": "/seo-prosuvannya-saitiv/",
     "id": 3,
-    "status": "draft_ready",
-    "created": "2026-06-18",
-    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1820&action=edit"
+    "status": "pending",
+    "created": "2026-06-18"
   }
 ]
