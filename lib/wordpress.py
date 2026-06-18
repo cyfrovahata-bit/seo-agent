@@ -55,9 +55,13 @@ class WordPressClient:
         ]
 
     def get_raw_content(self, post_id: int, post_type: str = "posts") -> str:
-        """Повертає HTML-контент запису для використання як зразок."""
-        item = self._get(f"{post_type}/{post_id}")
-        return item["content"]["rendered"]
+        """Повертає сирий Gutenberg-контент (wp:block розмітку) для копіювання структури."""
+        try:
+            item = self._get(f"{post_type}/{post_id}", {"context": "edit"})
+            return item["content"]["raw"]
+        except Exception:
+            item = self._get(f"{post_type}/{post_id}")
+            return item["content"]["rendered"]
 
     def create_draft(self, title: str, content: str, post_type: str = "posts") -> dict:
         """Для НОВОГО контенту, якого ще не існує на сайті — створює запис
