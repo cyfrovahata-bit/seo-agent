@@ -35,16 +35,16 @@ TEXTS_REPLACEMENT_PROMPT = """\
 Завдання: {title}
 Опис: {description}
 
-Нижче — список текстових рядків з існуючої статті-зразка. Для КОЖНОГО рядка
-напиши новий текст відповідно до нової теми, зберігаючи приблизно ту ж довжину
-і стиль (діловий, українська мова).
+Нижче — пронумерований список текстів із статті-зразка (можуть містити HTML-теги).
+Для КОЖНОГО тексту напиши новий відповідно до нової теми, зберігаючи приблизно ту ж
+довжину і стиль (діловий, українська мова). Якщо в тексті є <strong> або <br> — збережи.
 
-Поверни ТІЛЬКИ валідний JSON масив об'єктів:
-[{{"old": "оригінальний текст", "new": "новий текст"}}, ...]
+Поверни ТІЛЬКИ валідний JSON масив — тільки нові тексти за їх номером:
+[{{"i": 0, "new": "новий текст"}}, {{"i": 1, "new": "..."}}]
 
 Жодних пояснень, тільки JSON.
 
-Тексти для заміни:
+Тексти:
 {texts_json}
 """
 
@@ -239,31 +239,34 @@ def replace_block_ids(markup: str) -> str:
 
 
 def extract_texts(markup: str) -> list[str]:
-    """Витягує inner HTML блочних елементів і текст span-міток списків."""
-    soup = BeautifulSoup(markup, "html.parser")
-    seen, texts = set(), []
-    # Блочні елементи — беремо inner HTML (щоб replace() знаходив точний збіг у розмітці)
-    for tag in soup.find_all(["h1", "h2", "h3", "h4", "p"]):
-        inner = tag.decode_contents().strip()
-        plain = tag.get_text(strip=True)
-        if len(plain) > 10 and inner not in seen:
-            seen.add(inner)
-            texts.append(inner)
-    # Елементи icon-list — вони у <span>, не <li>
-    for tag in soup.find_all("span", class_="uagb-icon-list__label"):
-        text = tag.get_text(strip=True)
-        if len(text) > 5 and text not in seen:
-            seen.add(text)
-            texts.append(text)
+    """Витягує ТОЧНІ рядки з розмітки через regex — без парсингу, без нормалізації."""
+    texts, seen = [], set()
+    # h1/h2 заголовки
+    for m in re.finditer(r'<h[12][^>]*>(.*?)</h[12]>', markup, re.DOTALL):
+        t = m.group(1).strip()
+        if len(re.sub(r'<[^>]+>', '', t)) > 10 and t not in seen:
+            seen.add(t); texts.append(t)
+    # Параграфи (з можливим inner HTML — <strong>, <br> тощо)
+    for m in re.finditer(r'<p[^>]*>(.*?)</p>', markup, re.DOTALL):
+        t = m.group(1).strip()
+        plain = re.sub(r'<[^>]+>', '', t)
+        if len(plain) > 10 and t not in seen:
+            seen.add(t); texts.append(t)
+    # Мітки icon-list
+    for m in re.finditer(r'<span class="uagb-icon-list__label">(.*?)</span>', markup):
+        t = m.group(1).strip()
+        if len(t) > 5 and t not in seen:
+            seen.add(t); texts.append(t)
     return texts
 
 
-def apply_replacements(markup: str, replacements: list[dict]) -> str:
-    """Замінює тексти в розмітці за списком {old, new}."""
-    for item in replacements:
-        old, new = item.get("old", ""), item.get("new", "")
-        if old and new and old != new:
-            markup = markup.replace(old, new)
+def apply_replacements(markup: str, originals: list[str], new_texts: list[dict]) -> str:
+    """Замінює тексти в розмітці за індексованим списком {i, new}."""
+    for item in new_texts:
+        idx = item.get("i", -1)
+        new = item.get("new", "")
+        if 0 <= idx < len(originals) and new and originals[idx] != new:
+            markup = markup.replace(originals[idx], new)
     return markup
 
 
@@ -278,14 +281,19 @@ def process_create_new(rec, client, wp, telegram_token, chat_id):
     texts = extract_texts(reference_markup)
     texts_json = json.dumps(texts, ensure_ascii=False)
 
-    # Claude генерує заміни текстів
+    # Витягуємо тексти — ТОЧНІ рядки з розмітки (Claude тільки генерує нові, не відтворює старі)
+    texts = extract_texts(reference_markup)
+    texts_indexed = [{"i": i, "text": t} for i, t in enumerate(texts)]
+    texts_json = json.dumps(texts_indexed, ensure_ascii=False)
+
+    # Claude генерує нові тексти за індексом
     raw_response = call_claude(client, TEXTS_REPLACEMENT_PROMPT.format(
         title=rec["title"], description=rec["description"], texts_json=texts_json,
     ), max_tokens=4000)
     json_match = re.search(r"\[.*\]", raw_response, re.DOTALL)
-    replacements = json.loads(json_match.group()) if json_match else []
+    new_texts = json.loads(json_match.group()) if json_match else []
 
-    # Claude генерує нові info-box блоки (іконки + кількість)
+    # Claude генерує нові info-box іконки
     infoboxes = extract_infoboxes(reference_markup)
     if infoboxes:
         raw_layout = call_claude(client, LAYOUT_PROMPT.format(
@@ -302,13 +310,13 @@ def process_create_new(rec, client, wp, telegram_token, chat_id):
     new_markup = reference_markup
     if new_infoboxes:
         new_markup = adjust_infobox_blocks(new_markup, new_infoboxes)
-    new_markup = apply_replacements(new_markup, replacements)
+    new_markup = apply_replacements(new_markup, texts, new_texts)
     new_markup = strip_hero_background(new_markup)
     new_markup = replace_block_ids(new_markup)
 
-    # Заголовок
+    # Заголовок — перший довгий новий текст
     new_title = rec["title"]
-    for item in replacements:
+    for item in new_texts:
         if len(item.get("new", "")) > 20:
             new_title = item["new"]
             break
