@@ -29,7 +29,12 @@
     "action": "edit_existing",
     "target_page_path": null,
     "id": 3,
-    "status": "pending",
-    "created": "2026-06-19"
+    "status": "published",
+    "created": "2026-06-19",
+    "published_date": "2026-06-19",
+    "baseline_metrics": {
+      "indexed_pages_gsc": 2,
+      "total_wp_pages": 9
+    }
   }
 ]
