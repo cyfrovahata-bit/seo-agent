@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from lib.google_seo import get_search_console_data, get_ga4_data
 from lib.metrics import find_page_metrics, IMPACT_REVIEW_DAYS
 from lib.state import load_json, save_json
-from lib.telegram import get_updates, send_message
+from lib.telegram import get_updates, send_message, answer_callback_query, edit_message_reply_markup
 from lib.wordpress import WordPressClient
 
 MODEL = "claude-sonnet-4-6"
@@ -396,18 +396,60 @@ def main():
     backlog = load_json("recommendations.json", default=[])
     by_id = {r["id"]: r for r in backlog}
 
-    requested_do, requested_published = [], []
+    requested_do, requested_published, requested_reject = [], [], []
+    callbacks_to_answer = []  # (callback_query_id, chat_id, message_id, text)
+
     for update in updates:
         offset_data["offset"] = update["update_id"] + 1
+
+        # Inline кнопка (callback_query)
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            data = cq.get("data", "")
+            cq_id = cq["id"]
+            cq_chat = str(cq["message"]["chat"]["id"])
+            cq_msg_id = cq["message"]["message_id"]
+            m_do = re.match(r"do_(\d+)", data)
+            m_rej = re.match(r"reject_(\d+)", data)
+            if m_do:
+                rec_id = int(m_do.group(1))
+                requested_do.append(rec_id)
+                callbacks_to_answer.append((cq_id, cq_chat, cq_msg_id, f"▶️ Виконую #{rec_id}..."))
+            elif m_rej:
+                rec_id = int(m_rej.group(1))
+                requested_reject.append(rec_id)
+                callbacks_to_answer.append((cq_id, cq_chat, cq_msg_id, f"❌ Рекомендацію #{rec_id} відхилено"))
+            continue
+
+        # Текстові команди (/do, /published, /reject)
         text = update.get("message", {}).get("text", "").strip()
         m_do = re.match(r"/do\s+(\d+)", text)
         m_pub = re.match(r"/published\s+(\d+)", text)
+        m_rej = re.match(r"/reject\s+(\d+)", text)
         if m_do:
             requested_do.append(int(m_do.group(1)))
         elif m_pub:
             requested_published.append(int(m_pub.group(1)))
+        elif m_rej:
+            requested_reject.append(int(m_rej.group(1)))
 
     save_json("telegram_offset.json", offset_data)
+
+    # Відповідаємо на callback і прибираємо кнопки
+    for cq_id, cq_chat, cq_msg_id, cq_text in callbacks_to_answer:
+        answer_callback_query(telegram_token, cq_id, cq_text)
+
+    # Відхилення рекомендацій
+    for rec_id in requested_reject:
+        rec = by_id.get(rec_id)
+        if rec is None:
+            send_message(telegram_token, chat_id, f"⚠️ Рекомендацію #{rec_id} не знайдено.")
+            continue
+        if rec["status"] != "pending":
+            send_message(telegram_token, chat_id, f"ℹ️ #{rec_id} вже має статус \"{rec['status']}\".")
+            continue
+        rec["status"] = "rejected"
+        send_message(telegram_token, chat_id, f"❌ Рекомендацію #{rec_id} «{rec['title']}» відхилено.")
 
     for rec_id in requested_published:
         process_published(rec_id, by_id, telegram_token, chat_id)
@@ -427,7 +469,7 @@ def main():
                 continue
             process_recommendation(rec, client, wp, telegram_token, chat_id)
 
-    if requested_do or requested_published:
+    if requested_do or requested_published or requested_reject:
         save_json("recommendations.json", list(by_id.values()))
 
 

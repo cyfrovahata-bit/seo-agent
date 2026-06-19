@@ -17,7 +17,7 @@ import anthropic
 from lib.google_seo import get_search_console_data, get_ga4_data
 from lib.metrics import aggregate_site_totals, find_page_metrics, IMPACT_REVIEW_DAYS
 from lib.state import load_json, save_json
-from lib.telegram import send_message
+from lib.telegram import send_message, send_recommendations_buttons
 from lib.wordpress import WordPressClient
 
 MODEL = "claude-sonnet-4-6"
@@ -280,17 +280,16 @@ def main():
     save_json("metrics_history.json", history[-MAX_HISTORY_ENTRIES:])
 
     pending = [r for r in backlog if r["status"] == "pending"]
-    footer = ""
-    if pending:
-        footer = "\n\n📋 Очікують виконання:\n" + "\n".join(
-            f"#{r['id']} [{r['priority']}] {r['title']}" for r in pending
-        ) + "\n\nЩоб агент підготував зміну — напиши: /do <номер>" \
-            "\nКоли сам опублікуєш зміну в wp-admin — напиши: /published <номер>"
 
     send_message(
         os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"],
-        f"{emoji} SEO {period_label} звіт | {start_date} – {end_date}\n\n{report_text}{footer}",
+        f"{emoji} SEO {period_label} звіт | {start_date} – {end_date}\n\n{report_text}",
     )
+
+    if pending:
+        send_recommendations_buttons(
+            os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"], pending
+        )
 
 
 if __name__ == "__main__":
