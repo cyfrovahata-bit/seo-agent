@@ -51,11 +51,11 @@
     ]
   },
   {
-    "date": "2026-06-18",
+    "date": "2026-06-19",
     "site_totals": {
       "clicks": 0,
       "impressions": 17,
-      "sessions": 25,
+      "sessions": 24,
       "users": 19
     },
     "top_queries": [
@@ -87,10 +87,10 @@
     "top_pages": [
       {
         "page": "/",
-        "sessions": 23,
+        "sessions": 22,
         "users": 18,
-        "bounce_rate": 69.6,
-        "avg_duration_sec": 29.9
+        "bounce_rate": 68.2,
+        "avg_duration_sec": 31.2
       },
       {
         "page": "/seo-prosuvannya-saitiv/",
