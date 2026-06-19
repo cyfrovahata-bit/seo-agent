@@ -7,9 +7,10 @@
     "action": "create_new",
     "target_page_path": null,
     "id": 1,
-    "status": "draft_ready",
+    "status": "published",
     "created": "2026-06-19",
-    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1824&action=edit"
+    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1824&action=edit",
+    "published_date": "2026-06-19"
   },
   {
     "title": "Додати внутрішні посилання з блог-статей на /seo-prosuvannya-saitiv/",
