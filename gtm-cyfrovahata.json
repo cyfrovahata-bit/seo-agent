@@ -1,0 +1,189 @@
+{
+  "exportFormatVersion": 2,
+  "exportTime": "2026-06-20 12:00:00",
+  "containerVersion": {
+    "path": "accounts/0/containers/0/versions/0",
+    "accountId": "0",
+    "containerId": "0",
+    "containerVersionId": "0",
+    "tag": [
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "tagId": "1",
+        "name": "GA4 - Конфігурація",
+        "type": "gaawc",
+        "parameter": [
+          {"type": "TEMPLATE", "key": "measurementId", "value": "G-C8XK347H5P"},
+          {"type": "BOOLEAN", "key": "sendPageView", "value": "true"}
+        ],
+        "firingTriggerId": ["2147479553"],
+        "tagFiringOption": "ONCE_PER_EVENT",
+        "monitoringMetadata": {"type": "MAP"}
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "tagId": "2",
+        "name": "GA4 - Заявка з форми",
+        "type": "gaawe",
+        "parameter": [
+          {"type": "TEMPLATE", "key": "measurementId", "value": "G-C8XK347H5P"},
+          {"type": "TEMPLATE", "key": "eventName", "value": "form_submit"},
+          {
+            "type": "LIST",
+            "key": "eventParameters",
+            "list": [
+              {
+                "type": "MAP",
+                "map": [
+                  {"type": "TEMPLATE", "key": "name", "value": "event_category"},
+                  {"type": "TEMPLATE", "key": "value", "value": "Конверсія"}
+                ]
+              },
+              {
+                "type": "MAP",
+                "map": [
+                  {"type": "TEMPLATE", "key": "name", "value": "event_label"},
+                  {"type": "TEMPLATE", "key": "value", "value": "Форма контактів"}
+                ]
+              }
+            ]
+          }
+        ],
+        "firingTriggerId": ["10"],
+        "tagFiringOption": "ONCE_PER_EVENT",
+        "monitoringMetadata": {"type": "MAP"}
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "tagId": "3",
+        "name": "GA4 - Клік дзвінок",
+        "type": "gaawe",
+        "parameter": [
+          {"type": "TEMPLATE", "key": "measurementId", "value": "G-C8XK347H5P"},
+          {"type": "TEMPLATE", "key": "eventName", "value": "phone_click"},
+          {
+            "type": "LIST",
+            "key": "eventParameters",
+            "list": [
+              {
+                "type": "MAP",
+                "map": [
+                  {"type": "TEMPLATE", "key": "name", "value": "event_category"},
+                  {"type": "TEMPLATE", "key": "value", "value": "Конверсія"}
+                ]
+              },
+              {
+                "type": "MAP",
+                "map": [
+                  {"type": "TEMPLATE", "key": "name", "value": "event_label"},
+                  {"type": "TEMPLATE", "key": "value", "value": "+380981534226"}
+                ]
+              }
+            ]
+          }
+        ],
+        "firingTriggerId": ["11"],
+        "tagFiringOption": "ONCE_PER_EVENT",
+        "monitoringMetadata": {"type": "MAP"}
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "tagId": "4",
+        "name": "GA4 - Клік Telegram",
+        "type": "gaawe",
+        "parameter": [
+          {"type": "TEMPLATE", "key": "measurementId", "value": "G-C8XK347H5P"},
+          {"type": "TEMPLATE", "key": "eventName", "value": "telegram_click"},
+          {
+            "type": "LIST",
+            "key": "eventParameters",
+            "list": [
+              {
+                "type": "MAP",
+                "map": [
+                  {"type": "TEMPLATE", "key": "name", "value": "event_category"},
+                  {"type": "TEMPLATE", "key": "value", "value": "Конверсія"}
+                ]
+              },
+              {
+                "type": "MAP",
+                "map": [
+                  {"type": "TEMPLATE", "key": "name", "value": "event_label"},
+                  {"type": "TEMPLATE", "key": "value", "value": "Telegram @cyfrovahata"}
+                ]
+              }
+            ]
+          }
+        ],
+        "firingTriggerId": ["12"],
+        "tagFiringOption": "ONCE_PER_EVENT",
+        "monitoringMetadata": {"type": "MAP"}
+      }
+    ],
+    "trigger": [
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "10",
+        "name": "Форма - Відправка",
+        "type": "FORM_SUBMISSION",
+        "waitForTags": {"type": "BOOLEAN", "key": "waitForTags", "value": "true"},
+        "checkValidation": {"type": "BOOLEAN", "key": "checkValidation", "value": "true"},
+        "waitForTagsTimeout": {"type": "TEMPLATE", "key": "waitForTagsTimeout", "value": "2000"},
+        "autoEventFilter": [
+          {
+            "type": "CONTAINS",
+            "parameter": [
+              {"type": "TEMPLATE", "key": "arg0", "value": "{{Page URL}}"},
+              {"type": "TEMPLATE", "key": "arg1", "value": "kontakty"}
+            ]
+          }
+        ]
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "11",
+        "name": "Клік - Дзвінок",
+        "type": "LINK_CLICK",
+        "waitForTags": {"type": "BOOLEAN", "key": "waitForTags", "value": "true"},
+        "checkValidation": {"type": "BOOLEAN", "key": "checkValidation", "value": "false"},
+        "waitForTagsTimeout": {"type": "TEMPLATE", "key": "waitForTagsTimeout", "value": "2000"},
+        "autoEventFilter": [
+          {
+            "type": "CONTAINS",
+            "parameter": [
+              {"type": "TEMPLATE", "key": "arg0", "value": "{{Click URL}}"},
+              {"type": "TEMPLATE", "key": "arg1", "value": "tel:"}
+            ]
+          }
+        ]
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "12",
+        "name": "Клік - Telegram",
+        "type": "LINK_CLICK",
+        "waitForTags": {"type": "BOOLEAN", "key": "waitForTags", "value": "true"},
+        "checkValidation": {"type": "BOOLEAN", "key": "checkValidation", "value": "false"},
+        "waitForTagsTimeout": {"type": "TEMPLATE", "key": "waitForTagsTimeout", "value": "2000"},
+        "autoEventFilter": [
+          {
+            "type": "CONTAINS",
+            "parameter": [
+              {"type": "TEMPLATE", "key": "arg0", "value": "{{Click URL}}"},
+              {"type": "TEMPLATE", "key": "arg1", "value": "t.me"}
+            ]
+          }
+        ]
+      }
+    ],
+    "variable": [],
+    "fingerprint": "0"
+  }
+}
