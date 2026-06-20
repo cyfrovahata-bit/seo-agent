@@ -19,6 +19,8 @@ from lib.metrics import aggregate_site_totals, find_page_metrics, IMPACT_REVIEW_
 from lib.state import load_json, save_json
 from lib.telegram import send_message, send_recommendations_buttons
 from lib.wordpress import WordPressClient
+from lib.competitors import analyze_competitors
+from lib.technical_seo import run_technical_audit
 
 MODEL = "claude-sonnet-4-6"
 MAX_HISTORY_ENTRIES = 90  # зберігати до 90 записів (~3 місяці щоденних)
@@ -42,6 +44,8 @@ SYSTEM_PROMPT = """\
 - Не повторюй рекомендації з відкритого бэклогу
 - НІКОЛИ не пропонуй сторінки під конкретні міста (Ужгород, Львів тощо)
 - Блог-статті: не більше 2 пропозицій на тиждень; якщо в бэклозі вже є 2+ — не пропонуй нових
+- Якщо є "АНАЛІЗ КОНКУРЕНТІВ" — використовуй "прогалини в контенті" як ідеї для статей (не більше 1-2 на тиждень)
+- Якщо є "ТЕХНІЧНИЙ АУДИТ" — обов'язково прокоментуй критичні проблеми (noindex, відсутній H1, битий title) простими словами
 - Рекомендації завжди точкові: один заголовок, один блок, одна стаття — не "переписати сторінку"
 
 СТИЛЬ — людська мова, не технічна:
@@ -218,6 +222,20 @@ def main():
     impact_reviews = build_impact_reviews(backlog, gsc_data, ga4_data, today)
     open_backlog = [r for r in backlog if r["status"] == "pending"]
 
+    competitor_data = None
+    technical_data = None
+    if mode == "weekly":
+        our_page_paths = list(page_snapshots.keys())
+        try:
+            competitor_data = analyze_competitors(our_page_paths)
+        except Exception as e:
+            competitor_data = {"error": str(e)}
+        try:
+            pagespeed_key = os.environ.get("PAGESPEED_API_KEY")
+            technical_data = run_technical_audit(wp, os.environ["WP_BASE_URL"], pagespeed_key)
+        except Exception as e:
+            technical_data = {"error": str(e)}
+
     frozen_text = ""
     if frozen_pages:
         lines = ["⛔ НЕ ПРОПОНУЙ нових змін для цих сторінок — зміни вже внесені, чекаємо результату:"]
@@ -267,6 +285,13 @@ def main():
 
 ОЦІНКА ЕФЕКТУ ЗМІН (раніше застосовані правки, час підбити підсумок):
 {impact_reviews if impact_reviews else "Немає правок, готових до оцінки ефекту."}
+
+{f"""ТЕХНІЧНИЙ АУДИТ САЙТУ:
+{technical_data}""" if technical_data else ""}
+
+{f"""АНАЛІЗ КОНКУРЕНТІВ (теми яких нема у нас, але є у 2+ конкурентів):
+Конкуренти: {[c['domain'] + ' (' + str(c['total_pages']) + ' стор.)' for c in competitor_data.get('competitors', [])]}
+Прогалини в контенті: {competitor_data.get('content_gaps', [])}""" if competitor_data else ""}
 """
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
