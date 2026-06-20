@@ -4,57 +4,72 @@
 
 ---
 
-## Як додати новий сайт
+## Як підключити сайт клієнта
 
-Щоб агент просував ще один сайт — потрібно повторити налаштування для нього окремо. Найпростіше — форкнути цей репозиторій або скопіювати його в новий приватний репо.
+Telegram-бот, Google-акаунт, Anthropic API — все залишається твоє, спільне. Для нового сайту потрібно лише підключити його до вже існуючої інфраструктури і створити окремий репозиторій агента.
 
-### Крок 1. WordPress: доступ для агента
+### На сайті клієнта: встановити аналітику
 
-1. У wp-admin створи **окремого користувача** з роллю **Editor** (не Admin), наприклад `seo-agent`
+**1. Google Tag Manager** — один рядок коду, через нього йде все інше
+
+Додай два фрагменти в тему WordPress (або через плагін Insert Headers and Footers):
+
+- У `<head>`: скрипт GTM (отримаєш після створення контейнера на tagmanager.google.com)
+- Одразу після `<body>`: `<noscript>` iframe GTM
+
+Після встановлення GTM — через нього налаштуй теги в інтерфейсі GTM (без змін на сайті):
+- **GA4 Configuration** — тег Google на всіх сторінках (Measurement ID з GA4)
+- **form_submit** — подія при відправці форми з контактної сторінки
+- **phone_click** — подія при кліку на номер телефону (`tel:`)
+- **telegram_click** або **viber_click** — подія при кліку на месенджер
+
+**2. Google Search Console** — підтвердити сайт
+
+- Зайди на search.google.com/search-console → Додати ресурс
+- Підтвердження через GTM (найпростіше — вибери "Google Tag Manager" як спосіб)
+- Завантаж sitemap: `https://сайт-клієнта.ua/sitemap.xml`
+
+**3. Додати твій сервісний акаунт**
+
+Твій Google сервісний акаунт вже існує (email вигляду `xxx@yyy.iam.gserviceaccount.com`). Потрібно дати йому доступ до даних нового сайту:
+
+- **Search Console** → Налаштування → Користувачі та дозволи → Додати користувача → вставити email сервісного акаунту (роль: Обмежений)
+- **GA4** → Адмін → Керування доступом до ресурсу → + → вставити email (роль: Переглядач)
+
+Знайди два ID:
+- `GSC_SITE_URL` — точна адреса як у Search Console (напр. `https://сайт-клієнта.ua/`)
+- `GA4_PROPERTY_ID` — числовий ID ресурсу (GA4 → Адмін → Налаштування ресурсу)
+
+### На сайті клієнта: доступ до WordPress
+
+1. У wp-admin створи користувача з роллю **Editor**, наприклад `seo-agent`
 2. Зайди під ним у **Users → Profile → Application Passwords**
-3. Введи назву → **Add New Application Password** → скопіюй пароль (формат `xxxx xxxx xxxx xxxx xxxx xxxx`)
-4. Переконайся що REST API відкритий: відкрий `https://твій-сайт.ua/wp-json/wp/v2/posts` — має повернутись JSON
+3. Додай пароль → скопіюй (формат `xxxx xxxx xxxx xxxx xxxx xxxx`)
+4. Перевір що REST API відкритий: `https://сайт-клієнта.ua/wp-json/wp/v2/posts` має повернути JSON
 
-### Крок 2. Google Cloud: Search Console і GA4
+### Створити окремий репозиторій для клієнта
 
-1. Створи проєкт у [Google Cloud Console](https://console.cloud.google.com/)
-2. Увімкни два API: **Google Search Console API** і **Google Analytics Data API**
-3. Створи **Service Account** (IAM & Admin → Service Accounts) → Keys → Add Key → JSON — збережи файл
-4. Додай email сервісного акаунту (вигляд: `xxx@yyy.iam.gserviceaccount.com`):
-   - у **Search Console** → Settings → Users and permissions → Add user (роль Restricted)
-   - у **GA4** → Admin → Property Access Management → Add (роль Viewer)
-5. Знайди потрібні ідентифікатори:
-   - `GSC_SITE_URL` — точна URL з Search Console (напр. `https://твій-сайт.ua/`)
-   - `GA4_PROPERTY_ID` — числовий ID (GA4 → Admin → Property Settings)
+Кожен сайт — окремий GitHub репозиторій (копія цього). Звіти та рекомендації не змішуються.
 
-### Крок 3. Telegram-бот
+1. Створи новий **приватний** репозиторій на GitHub
+2. Скопіюй туди всі файли цього проєкту
+3. Settings → Secrets and variables → Actions → додай секрети:
 
-1. Напиши **@BotFather** → `/newbot` → отримаєш `TELEGRAM_BOT_TOKEN`
-2. Напиши своєму боту будь-яке повідомлення
-3. Відкрий `https://api.telegram.org/bot<TOKEN>/getUpdates` — знайди `"chat":{"id": ...}` — це `TELEGRAM_CHAT_ID`
-
-### Крок 4. GitHub: секрети репозиторію
-
-Settings → Secrets and variables → Actions → **New repository secret**, додай:
-
-| Секрет | Що це |
+| Секрет | Значення |
 |---|---|
-| `ANTHROPIC_API_KEY` | ключ з [console.anthropic.com](https://console.anthropic.com) |
-| `TELEGRAM_BOT_TOKEN` | з кроку 3 |
-| `TELEGRAM_CHAT_ID` | з кроку 3 |
-| `WP_BASE_URL` | `https://твій-сайт.ua` |
-| `WP_USERNAME` | логін з кроку 1 |
-| `WP_APP_PASSWORD` | пароль з кроку 1 |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | повний вміст JSON-файлу з кроку 2 |
-| `GSC_SITE_URL` | з кроку 2 |
-| `GA4_PROPERTY_ID` | з кроку 2 |
-| `PAGESPEED_API_KEY` | (необов'язково) API key з Google Cloud для аудиту швидкості |
+| `ANTHROPIC_API_KEY` | **твій існуючий** ключ |
+| `TELEGRAM_BOT_TOKEN` | **твій існуючий** бот-токен |
+| `TELEGRAM_CHAT_ID` | **твій існуючий** chat ID |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | **твій існуючий** JSON-файл сервісного акаунту |
+| `WP_BASE_URL` | `https://сайт-клієнта.ua` |
+| `WP_USERNAME` | логін з кроку вище |
+| `WP_APP_PASSWORD` | пароль з кроку вище |
+| `GSC_SITE_URL` | з Search Console нового сайту |
+| `GA4_PROPERTY_ID` | з GA4 нового сайту |
 
-### Крок 5. Запуск
+4. Actions → **Run workflow** → перевір чи прийшов звіт у Telegram
 
-1. Перейди в **Actions** → переконайся, що workflows активні
-2. Запусти **SEO Daily Report** вручну (кнопка **Run workflow**) — перевір чи прийшов звіт у Telegram
-3. Якщо помилка — дивись логи в Actions, зазвичай причина: неправильний секрет або закритий REST API
+Звіти по кожному сайту приходитимуть в той самий Telegram з підписом сайту у заголовку.
 
 ---
 
