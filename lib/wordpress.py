@@ -34,7 +34,6 @@ class WordPressClient:
         return resp.json()
 
     def list_content(self, post_type: str = "posts", per_page: int = 50) -> list[dict]:
-        """Короткий список (id, title, slug, link) — для огляду структури сайту."""
         items = self._get(post_type, {"per_page": per_page, "status": "publish"})
         return [
             {
@@ -47,7 +46,6 @@ class WordPressClient:
         ]
 
     def search_content(self, query: str, post_type: str = "posts") -> list[dict]:
-        """Пошук схожих за змістом сторінок/постів — щоб знайти зразок дизайну."""
         items = self._get(post_type, {"search": query, "per_page": 5})
         return [
             {"id": i["id"], "title": i["title"]["rendered"], "slug": i["slug"]}
@@ -55,7 +53,6 @@ class WordPressClient:
         ]
 
     def get_raw_content(self, post_id: int, post_type: str = "posts") -> str:
-        """Повертає сирий Gutenberg-контент (wp:block розмітку) для копіювання структури."""
         try:
             item = self._get(f"{post_type}/{post_id}", {"context": "edit"})
             return item["content"]["raw"]
@@ -64,8 +61,6 @@ class WordPressClient:
             return item["content"]["rendered"]
 
     def create_draft(self, title: str, content: str, post_type: str = "posts") -> dict:
-        """Для НОВОГО контенту, якого ще не існує на сайті — створює запис
-        зі статусом draft (це безпечно, бо живої версії ще немає)."""
         result = self._post(post_type, {
             "title": title,
             "content": content,
@@ -77,7 +72,6 @@ class WordPressClient:
         }
 
     def _fetch_seo_tags(self, url: str) -> dict:
-        """Витягує <title> і <meta name=description> з реального HTML сторінки."""
         from bs4 import BeautifulSoup
         try:
             resp = requests.get(url, timeout=15)
@@ -92,8 +86,6 @@ class WordPressClient:
             return {"seo_title": "", "meta_description": ""}
 
     def get_page_snapshot(self, slug: str) -> dict | None:
-        """Повертає title, meta description і текстовий вміст сторінки за slug.
-        Шукає спочатку в pages, потім у posts."""
         from bs4 import BeautifulSoup
         for post_type in ("pages", "posts"):
             items = self._get(post_type, {"slug": slug})
@@ -112,10 +104,45 @@ class WordPressClient:
             }
         return None
 
+    def find_by_slug(self, slug: str, post_type: str = "posts") -> dict | None:
+        items = self._get(post_type, {"slug": slug})
+        return items[0] if items else None
+
+    def find_block_on_site(self, block_hints: list[str]) -> str | None:
+        """
+        Сканує всі опубліковані пости і сторінки, знаходить перший Gutenberg-блок
+        що відповідає підказкам (наприклад ['wp:uagb/faq', 'wp:yoast/faq-block']).
+        Повертає чистий markup блоку від <!-- wp:... --> до <!-- /wp:... -->.
+        """
+        for post_type in ("posts", "pages"):
+            try:
+                items = self._get(post_type, {"per_page": 50, "status": "publish", "context": "edit"})
+            except Exception:
+                continue
+            for item in items:
+                content = item.get("content", {}).get("raw", "")
+                if not content:
+                    continue
+                for hint in block_hints:
+                    start_marker = f"<!-- {hint}"
+                    # закриваючий тег — перше слово після wp:
+                    block_name = hint.split()[0]
+                    end_marker = f"<!-- /{block_name} -->"
+                    start = content.find(start_marker)
+                    if start == -1:
+                        continue
+                    end = content.find(end_marker, start)
+                    if end != -1:
+                        return content[start:end + len(end_marker)]
+                    # self-closing block (без вкладеного контенту)
+                    end_sc = content.find("-->", start)
+                    if end_sc != -1:
+                        return content[start:end_sc + 3]
+        return None
+
     def find_best_template(self, rec_title: str, rec_description: str, fallback_id: int = 1751) -> tuple[int, str]:
         """
         Знаходить найкращий пост-шаблон серед опублікованих.
-        Шукає пост з потрібними блоками (FAQ, список, стандартний).
         Повертає (post_id, тип шаблону).
         """
         HAS_FAQ = "wp:yoast/faq-block"
@@ -130,9 +157,7 @@ class WordPressClient:
         except Exception:
             return fallback_id, "standard"
 
-        faq_candidates = []
-        list_candidates = []
-        standard_candidates = []
+        faq_candidates, list_candidates, standard_candidates = [], [], []
 
         for post in posts:
             content = post.get("content", {}).get("raw", "")
@@ -155,17 +180,10 @@ class WordPressClient:
         if standard_candidates:
             return standard_candidates[0], "standard"
         return fallback_id, "standard"
-        """Знаходить ОПУБЛІКОВАНИЙ запис за slug (останнім сегментом URL)."""
-        items = self._get(post_type, {"slug": slug})
-        return items[0] if items else None
 
     def propose_revision(self, post_id: int, content: str, post_type: str = "posts") -> dict:
-        """Для ВЖЕ ОПУБЛІКОВАНОЇ сторінки: НЕ змінює статус і НЕ чіпає живий
-        контент. Натомість створює автозбереження (autosave/revision),
-        прикріплене до цього запису — точно так само, як WordPress робить
-        це сам, коли ти редагуєш сторінку в редакторі, але ще не натиснув
-        "Оновити". Жива сторінка лишається незмінною, доки людина сама
-        не відкриє редактор і не підтвердить зміну."""
+        """Для ВЖЕ ОПУБЛІКОВАНОЇ сторінки — створює autosave-ревізію.
+        Жива сторінка лишається незмінною, доки людина не підтвердить у редакторі."""
         result = self._post(f"{post_type}/{post_id}/autosaves", {"content": content})
         return {
             "id": result["id"],

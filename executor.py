@@ -97,13 +97,43 @@ EDIT_EXISTING_PROMPT = """\
 {current_content}
 ---КІНЕЦЬ---
 
-Зроби ЛИШЕ ту правку, що описана в завданні (наприклад: додай один блок,
-поправ один абзац, додай FAQ-блок тощо). Решту розмітки, стилів, класів,
+{block_template_section}
+
+Зроби ЛИШЕ ту правку, що описана в завданні. Решту розмітки, стилів, класів,
 порядку існуючих блоків — залиш АБСОЛЮТНО без змін.
+
+Якщо потрібно додати новий блок — використовуй ЗРАЗОК БЛОКУ (якщо наданий):
+скопіюй його розмітку, змін тільки тексти під нову тему, не чіпай класи, атрибути, структуру.
+Якщо зразку немає — вставляй стандартний Gutenberg wp:paragraph або wp:heading.
 
 У відповіді поверни ПОВНИЙ оновлений контент сторінки (з усіма старими
 блоками + внесеною правкою), без пояснень, готовий для прямого збереження.
 """
+
+# Відповідність ключових слів → типи блоків для пошуку на сайті
+BLOCK_HINT_MAP = [
+    (["faq", "питань", "відповід", "запитань"],
+     ["wp:uagb/faq", "wp:yoast/faq-block", "wp:rank-math/faq-block"]),
+    (["список", "перелік", "переваг", "пункти", "кроки", "етапи"],
+     ["wp:uagb/icon-list", "wp:list"]),
+    (["cta", "заклик", "кнопк", "замовити", "зв'яжіться"],
+     ["wp:uagb/call-to-action", "wp:buttons"]),
+    (["відгук", "кейс", "приклад"],
+     ["wp:uagb/testimonial", "wp:pullquote"]),
+    (["таблиц", "порівнян"],
+     ["wp:table"]),
+    (["іконк", "блок переваг", "info-box", "infobox"],
+     ["wp:uagb/info-box"]),
+]
+
+
+def _detect_block_hints(title: str, description: str) -> list[str] | None:
+    """Визначає який тип блоку потрібен за текстом рекомендації."""
+    hint = (title + " " + description).lower()
+    for keywords, block_types in BLOCK_HINT_MAP:
+        if any(kw in hint for kw in keywords):
+            return block_types
+    return None
 
 
 def call_claude(client, prompt: str, max_tokens: int = 3000) -> str:
@@ -144,8 +174,21 @@ def process_edit_existing(rec, client, wp, telegram_token, chat_id):
     if "заголовок" in rec.get("title", "").lower() or "title" in rec.get("title", "").lower():
         rec["original_title_backup"] = target.get("title", {}).get("rendered", "")
 
+    # Шукаємо зразок блоку на сайті якщо рекомендація про додавання блоку
+    block_template_section = ""
+    block_hints = _detect_block_hints(rec["title"], rec.get("description", ""))
+    if block_hints:
+        found_block = wp.find_block_on_site(block_hints)
+        if found_block:
+            block_template_section = (
+                "ЗРАЗОК БЛОКУ З САЙТУ (використай цю розмітку як основу, змін тільки тексти):\n"
+                "---ЗРАЗОК---\n" + found_block + "\n---КІНЕЦЬ ЗРАЗКА---"
+            )
+
     updated_content = call_claude(client, EDIT_EXISTING_PROMPT.format(
-        title=rec["title"], description=rec["description"], current_content=current_content,
+        title=rec["title"], description=rec["description"],
+        current_content=current_content,
+        block_template_section=block_template_section,
     ))
 
     revision = wp.propose_revision(target["id"], updated_content, post_type)
