@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "title": "Додати блог-статтю: скільки коштує SEO просування в Україні",
+    "description": "Запит «просування сайту в гугл ціна» вже дає 13 показів на позиції ~98. Окрема стаття з розбором цін, пакетів і що входить у вартість SEO — дасть шанс ранжуватися за цим кластером раніше, ніж комерційна сторінка /seo-prosuvannya-saitiv/ підніметься. Стаття має містити: діапазони цін, від чого залежить вартість, порівняння форматів роботи.",
+    "type": "content",
+    "priority": "high",
+    "action": "create_new",
+    "target_page_path": null,
+    "id": 1,
+    "status": "published",
+    "created": "2026-06-19",
+    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1824&action=edit",
+    "published_date": "2026-06-19"
+  },
+  {
+    "title": "Додати внутрішні посилання з блог-статей на /seo-prosuvannya-saitiv/",
+    "description": "Статті /chomu-sait-ne-prynosyt-kliientiv/ та /yak-vybraty-kompaniiu-dlia-rozrobky-saitu/ вже є на сайті, але, ймовірно, не містять посилань на комерційну SEO-сторінку. Додати релевантні внутрішні посилання з анкорами типу 'SEO просування сайтів' — це передасть вагу на сторінку, яка вже має покази.",
+    "type": "onpage",
+    "priority": "high",
+    "action": "edit_existing",
+    "target_page_path": "/chomu-sait-ne-prynosyt-kliientiv/",
+    "id": 2,
+    "status": "pending",
+    "created": "2026-06-19"
+  },
+  {
+    "title": "Додати sitemap.xml і перевірити індексацію у Search Console",
+    "description": "Сайт молодий, у видачі лише 3 запити — можливо, не всі сторінки проіндексовані. Перевірити наявність sitemap.xml, подати його в GSC, перевірити покриття: чи всі 8+ сторінок у статусі 'Проіндексовано'.",
+    "type": "technical",
+    "priority": "high",
+    "action": "edit_existing",
+    "target_page_path": null,
+    "id": 3,
+    "status": "published",
+    "created": "2026-06-19",
+    "published_date": "2026-06-19",
+    "baseline_metrics": {
+      "indexed_pages_gsc": 2,
+      "total_wp_pages": 9
+    }
+  }
+]

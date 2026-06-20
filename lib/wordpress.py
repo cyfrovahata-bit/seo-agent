@@ -35,7 +35,7 @@ class WordPressClient:
 
     def list_content(self, post_type: str = "posts", per_page: int = 50) -> list[dict]:
         """Короткий список (id, title, slug, link) — для огляду структури сайту."""
-        items = self._get(post_type, {"per_page": per_page, "status": "publish,draft"})
+        items = self._get(post_type, {"per_page": per_page, "status": "publish"})
         return [
             {
                 "id": item["id"],
@@ -55,9 +55,13 @@ class WordPressClient:
         ]
 
     def get_raw_content(self, post_id: int, post_type: str = "posts") -> str:
-        """Повертає Gutenberg/HTML-розмітку запису — саме її копіює стиль агент-виконавець."""
-        item = self._get(f"{post_type}/{post_id}", {"context": "edit"})
-        return item["content"]["raw"]
+        """Повертає сирий Gutenberg-контент (wp:block розмітку) для копіювання структури."""
+        try:
+            item = self._get(f"{post_type}/{post_id}", {"context": "edit"})
+            return item["content"]["raw"]
+        except Exception:
+            item = self._get(f"{post_type}/{post_id}")
+            return item["content"]["rendered"]
 
     def create_draft(self, title: str, content: str, post_type: str = "posts") -> dict:
         """Для НОВОГО контенту, якого ще не існує на сайті — створює запис
@@ -71,6 +75,42 @@ class WordPressClient:
             "id": result["id"],
             "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
         }
+
+    def _fetch_seo_tags(self, url: str) -> dict:
+        """Витягує <title> і <meta name=description> з реального HTML сторінки."""
+        from bs4 import BeautifulSoup
+        try:
+            resp = requests.get(url, timeout=15)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            title_tag = soup.find("title")
+            desc_tag = soup.find("meta", attrs={"name": "description"})
+            return {
+                "seo_title": title_tag.get_text(strip=True) if title_tag else "",
+                "meta_description": desc_tag.get("content", "") if desc_tag else "",
+            }
+        except Exception:
+            return {"seo_title": "", "meta_description": ""}
+
+    def get_page_snapshot(self, slug: str) -> dict | None:
+        """Повертає title, meta description і текстовий вміст сторінки за slug.
+        Шукає спочатку в pages, потім у posts."""
+        from bs4 import BeautifulSoup
+        for post_type in ("pages", "posts"):
+            items = self._get(post_type, {"slug": slug})
+            if not items:
+                continue
+            item = items[0]
+            raw_html = item["content"].get("rendered", "")
+            soup = BeautifulSoup(raw_html, "html.parser")
+            text = " ".join(soup.get_text(" ", strip=True).split())[:3000]
+            yoast = item.get("yoast_head_json") or {}
+            return {
+                "title": item["title"].get("rendered", ""),
+                "meta_description": yoast.get("description", ""),
+                "seo_title": yoast.get("title", ""),
+                "text_content": text,
+            }
+        return None
 
     def find_by_slug(self, slug: str, post_type: str = "posts") -> dict | None:
         """Знаходить ОПУБЛІКОВАНИЙ запис за slug (останнім сегментом URL)."""
