@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from lib.google_seo import get_search_console_data, get_ga4_data
 from lib.metrics import find_page_metrics, IMPACT_REVIEW_DAYS
 from lib.state import load_json, save_json
-from lib.telegram import get_updates, send_message, answer_callback_query, edit_message_reply_markup
+from lib.telegram import get_updates, send_message, answer_callback_query
 from lib.wordpress import WordPressClient
 
 MODEL = "claude-sonnet-4-6"

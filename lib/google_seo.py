@@ -35,7 +35,11 @@ def get_search_console_data(service_account_json: str, site_url: str,
         "dimensions": ["query", "page"],
         "rowLimit": row_limit,
     }
-    response = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
+    try:
+        response = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
+    except Exception as e:
+        print(f"Search Console API error: {e}")
+        return []
     rows = response.get("rows", [])
     return [
         {
@@ -87,7 +91,11 @@ def get_ga4_data(service_account_json: str, property_id: str,
         ],
         limit=100,
     )
-    response = client.run_report(request)
+    try:
+        response = client.run_report(request)
+    except Exception as e:
+        print(f"GA4 API error: {e}")
+        return []
     result = []
     for row in response.rows:
         result.append({
