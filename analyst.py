@@ -21,6 +21,7 @@ from lib.telegram import send_message, send_recommendations_buttons
 from lib.wordpress import WordPressClient
 from lib.competitors import analyze_competitors
 from lib.technical_seo import run_technical_audit
+from lib.backlinks import get_backlink_report
 
 MODEL = "claude-sonnet-4-6"
 MAX_HISTORY_ENTRIES = 90  # зберігати до 90 записів (~3 місяці щоденних)
@@ -46,6 +47,9 @@ SYSTEM_PROMPT = """\
 - Блог-статті: не більше 2 пропозицій на тиждень; якщо в бэклозі вже є 2+ — не пропонуй нових
 - Якщо є "АНАЛІЗ КОНКУРЕНТІВ" — використовуй "прогалини в контенті" як ідеї для статей (не більше 1-2 на тиждень)
 - Якщо є "ТЕХНІЧНИЙ АУДИТ" — обов'язково прокоментуй критичні проблеми (noindex, відсутній H1, битий title) простими словами
+- Якщо є "МОЖЛИВОСТІ ДЛЯ ЗОВНІШНІХ ПОСИЛАНЬ" — запропонуй 1-2 конкретні майданчики як рекомендацію з type="technical", action="create_new", target_page_path=null; title має починатись з "Розмістити посилання на"
+- Якщо є "МОЖЛИВИЙ ВІДКАТ ЗМІН" — обов'язково запропонуй рекомендацію повернути оригінал, поясни що зміна не спрацювала
+- "ДИНАМІКА ПОЗИЦІЙ ЗАПИТІВ" — якщо якийсь запит різко впав (position_change > +5) — прокоментуй і запропонуй дії
 - Рекомендації завжди точкові: один заголовок, один блок, одна стаття — не "переписати сторінку"
 
 СТИЛЬ — людська мова, не технічна:
@@ -224,6 +228,7 @@ def main():
 
     competitor_data = None
     technical_data = None
+    backlink_data = None
     if mode == "weekly":
         our_page_paths = list(page_snapshots.keys())
         try:
@@ -235,6 +240,62 @@ def main():
             technical_data = run_technical_audit(wp, os.environ["WP_BASE_URL"], pagespeed_key)
         except Exception as e:
             technical_data = {"error": str(e)}
+        completed_backlinks = load_json("backlinks_done.json", default=[])
+        backlink_data = get_backlink_report(completed_backlinks)
+
+    # Трекінг позицій цільових запитів
+    keyword_history = load_json("keyword_history.json", default={})
+    if gsc_data:
+        for row in gsc_data:
+            query = row.get("query", "")
+            if not query:
+                continue
+            if query not in keyword_history:
+                keyword_history[query] = []
+            keyword_history[query].append({
+                "date": today.isoformat(),
+                "position": round(row.get("position", 0), 1),
+                "clicks": row.get("clicks", 0),
+                "impressions": row.get("impressions", 0),
+            })
+            keyword_history[query] = keyword_history[query][-90:]
+    save_json("keyword_history.json", keyword_history)
+
+    # Топ запити з динамікою позиції (порівняння з попереднім тижнем)
+    keyword_trends = []
+    for query, entries in keyword_history.items():
+        if len(entries) >= 2:
+            prev_pos = entries[-2]["position"]
+            curr_pos = entries[-1]["position"]
+            diff = round(curr_pos - prev_pos, 1)
+            keyword_trends.append({
+                "query": query,
+                "position_now": curr_pos,
+                "position_change": diff,
+                "clicks": entries[-1]["clicks"],
+            })
+    keyword_trends.sort(key=lambda x: x["clicks"], reverse=True)
+
+    # Перевіряємо чи треба запропонувати revert для погіршених title-змін
+    revert_candidates = []
+    for rec in backlog:
+        if (rec.get("status") == "published"
+                and rec.get("impact_checked")
+                and rec.get("action") == "edit_existing"
+                and rec.get("original_title_backup")
+                and not rec.get("revert_proposed")):
+            baseline = rec.get("baseline_metrics", {})
+            current = find_page_metrics(rec.get("target_page_path"), gsc_data, ga4_data)
+            if (baseline.get("clicks", 0) > 0
+                    and current.get("clicks", 0) < baseline.get("clicks", 0) * 0.7):
+                revert_candidates.append({
+                    "id": rec["id"],
+                    "title": rec["title"],
+                    "page": rec.get("target_page_path"),
+                    "clicks_before": baseline.get("clicks"),
+                    "clicks_now": current.get("clicks"),
+                    "original_backup": rec["original_title_backup"],
+                })
 
     frozen_text = ""
     if frozen_pages:
@@ -286,12 +347,23 @@ def main():
 ОЦІНКА ЕФЕКТУ ЗМІН (раніше застосовані правки, час підбити підсумок):
 {impact_reviews if impact_reviews else "Немає правок, готових до оцінки ефекту."}
 
+ДИНАМІКА ПОЗИЦІЙ ЗАПИТІВ (порівняно з попереднім звітом):
+{keyword_trends[:20] if keyword_trends else "Ще немає даних для порівняння."}
+
+{f"""⚠️ МОЖЛИВИЙ ВІДКАТ ЗМІН (кліки впали більш ніж на 30% після правки):
+{revert_candidates}
+Якщо це підтверджується — запропонуй рекомендацію з action=edit_existing щоб повернути оригінал.""" if revert_candidates else ""}
+
 {f"""ТЕХНІЧНИЙ АУДИТ САЙТУ:
 {technical_data}""" if technical_data else ""}
 
 {f"""АНАЛІЗ КОНКУРЕНТІВ (теми яких нема у нас, але є у 2+ конкурентів):
 Конкуренти: {[c['domain'] + ' (' + str(c['total_pages']) + ' стор.)' for c in competitor_data.get('competitors', [])]}
 Прогалини в контенті: {competitor_data.get('content_gaps', [])}""" if competitor_data else ""}
+
+{f"""МОЖЛИВОСТІ ДЛЯ ЗОВНІШНІХ ПОСИЛАНЬ (зроблено {backlink_data['total_done']}, залишилось {backlink_data['total_remaining']}):
+{backlink_data['opportunities'][:3]}
+Запропонуй 1-2 конкретні майданчики з інструкцією як розмістити посилання.""" if backlink_data and backlink_data['total_remaining'] > 0 else ""}
 """
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])

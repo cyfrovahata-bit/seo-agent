@@ -140,6 +140,10 @@ def process_edit_existing(rec, client, wp, telegram_token, chat_id):
 
     current_content = wp.get_raw_content(target["id"], post_type)
 
+    # Зберігаємо оригінальний заголовок для можливого відкату
+    if "заголовок" in rec.get("title", "").lower() or "title" in rec.get("title", "").lower():
+        rec["original_title_backup"] = target.get("title", {}).get("rendered", "")
+
     updated_content = call_claude(client, EDIT_EXISTING_PROMPT.format(
         title=rec["title"], description=rec["description"], current_content=current_content,
     ))
