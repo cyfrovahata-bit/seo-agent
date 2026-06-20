@@ -22,6 +22,7 @@ from lib.wordpress import WordPressClient
 from lib.competitors import analyze_competitors
 from lib.technical_seo import run_technical_audit
 from lib.backlinks import get_backlink_report
+from lib.target_keywords import build_target_keyword_report, build_cluster_summary
 
 MODEL = "claude-sonnet-4-6"
 MAX_HISTORY_ENTRIES = 90  # зберігати до 90 записів (~3 місяці щоденних)
@@ -50,6 +51,9 @@ SYSTEM_PROMPT = """\
 - Якщо є "МОЖЛИВОСТІ ДЛЯ ЗОВНІШНІХ ПОСИЛАНЬ" — запропонуй 1-2 конкретні майданчики як рекомендацію з type="technical", action="create_new", target_page_path=null; title має починатись з "Розмістити посилання на"
 - Якщо є "МОЖЛИВИЙ ВІДКАТ ЗМІН" — обов'язково запропонуй рекомендацію повернути оригінал, поясни що зміна не спрацювала
 - "ДИНАМІКА ПОЗИЦІЙ ЗАПИТІВ" — якщо якийсь запит різко впав (position_change > +5) — прокоментуй і запропонуй дії
+- "ЦІЛЬОВІ КЛЮЧОВІ СЛОВА" — коментуй тільки ті де є дані або значне відставання; не перераховуй всі 30 запитів
+- "СЕМАНТИЧНІ КЛАСТЕРИ" — вкажи який кластер найслабший і що можна зробити
+- "Реальний контент конкурентів" — порівняй їх H1/H2 з нашими сторінками, знайди ідеї яких нам бракує
 - Рекомендації завжди точкові: один заголовок, один блок, одна стаття — не "переписати сторінку"
 
 СТИЛЬ — людська мова, не технічна:
@@ -337,10 +341,20 @@ def main():
     competitor_section = ""
     if competitor_data:
         domains = [c["domain"] + " (" + str(c["total_pages"]) + " стор.)" for c in competitor_data.get("competitors", [])]
+        deep = competitor_data.get("deep_content", [])
+        deep_lines = []
+        for comp in deep:
+            deep_lines.append(f"\n  {comp['domain']}:")
+            for page in comp["pages"]:
+                deep_lines.append(f"    [{page.get('url','')}]")
+                deep_lines.append(f"    H1: {page.get('h1','')}")
+                deep_lines.append(f"    H2s: {'; '.join(page.get('h2s',[]))}")
+                deep_lines.append(f"    Meta: {page.get('meta_description','')}")
         competitor_section = (
-            "\nАНАЛІЗ КОНКУРЕНТІВ (теми яких нема у нас, але є у 2+ конкурентів):\n"
+            "\nАНАЛІЗ КОНКУРЕНТІВ:\n"
             "Конкуренти: " + str(domains) + "\n"
-            "Прогалини в контенті: " + str(competitor_data.get("content_gaps", []))
+            "Прогалини в контенті: " + str(competitor_data.get("content_gaps", [])) + "\n"
+            "Реальний контент конкурентів (H1/H2/meta):" + "".join(deep_lines)
         )
 
     backlink_section = ""
@@ -367,7 +381,9 @@ def main():
         f"ОЦІНКА ЕФЕКТУ ЗМІН (раніше застосовані правки, час підбити підсумок):\n"
         f"{impact_reviews if impact_reviews else 'Немає правок, готових до оцінки ефекту.'}\n\n"
         f"ДИНАМІКА ПОЗИЦІЙ ЗАПИТІВ (порівняно з попереднім звітом):\n"
-        f"{keyword_trends[:20] if keyword_trends else 'Ще немає даних для порівняння.'}"
+        f"{keyword_trends[:20] if keyword_trends else 'Ще немає даних для порівняння.'}\n\n"
+        f"{build_cluster_summary(gsc_data)}\n\n"
+        f"{build_target_keyword_report(keyword_history)}"
         f"{revert_section}{technical_section}{competitor_section}{backlink_section}"
     )
 
