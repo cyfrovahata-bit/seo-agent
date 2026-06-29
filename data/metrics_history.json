@@ -358,5 +358,25 @@
         "avg_duration_sec": 46.7
       }
     ]
+  },
+  {
+    "date": "2026-06-29",
+    "mode": "daily",
+    "site_totals": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 3,
+      "users": 3
+    },
+    "top_queries": [],
+    "top_pages": [
+      {
+        "page": "/",
+        "sessions": 3,
+        "users": 3,
+        "bounce_rate": 33.3,
+        "avg_duration_sec": 31.1
+      }
+    ]
   }
 ]
