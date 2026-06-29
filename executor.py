@@ -110,6 +110,25 @@ EDIT_EXISTING_PROMPT = """\
 блоками + внесеною правкою), без пояснень, готовий для прямого збереження.
 """
 
+MANUAL_EDIT_PROMPT = """\
+Ти — SEO-консультант. Людина буде вносити правку ВРУЧНУ в WordPress редакторі.
+Поясни ЧІТКО і КОРОТКО що саме потрібно зробити.
+
+Завдання: {title}
+Опис: {description}
+Сторінка: {page_url}
+
+Поточний контент сторінки (скорочено):
+{content_preview}
+
+Напиши інструкцію у форматі:
+1. Що знайти на сторінці (конкретний текст, блок, елемент)
+2. Що змінити / додати (точний текст або посилання)
+3. Де саме в редакторі це зробити
+
+Максимум 5 коротких пунктів. Лише конкретні дії, без теорії.
+"""
+
 # Відповідність ключових слів → типи блоків для пошуку на сайті
 BLOCK_HINT_MAP = [
     (["faq", "питань", "відповід", "запитань"],
@@ -150,60 +169,44 @@ def slug_from_path(path: str) -> str:
 
 
 def process_edit_existing(rec, client, wp, telegram_token, chat_id):
-    """Правка вже опублікованої сторінки: ЖИВИЙ контент не чіпаємо,
-    зміну кладемо як autosave-ревізію, прив'язану саме до цього запису."""
-    slug = slug_from_path(rec["target_page_path"])
+    """Правка вже опублікованої сторінки: надсилає точну інструкцію що змінити вручну."""
+    page_url = f"{wp.base_url}{rec['target_page_path']}" if rec.get("target_page_path") else ""
 
-    target, post_type = None, None
-    for candidate_type in ("pages", "posts"):
-        found = wp.find_by_slug(slug, candidate_type)
-        if found:
-            target, post_type = found, candidate_type
-            break
+    # Отримуємо поточний контент для контексту
+    content_preview = ""
+    if rec.get("target_page_path"):
+        slug = slug_from_path(rec["target_page_path"])
+        for candidate_type in ("pages", "posts"):
+            found = wp.find_by_slug(slug, candidate_type)
+            if found:
+                try:
+                    raw = wp.get_raw_content(found["id"], candidate_type)
+                    soup_import = __import__("bs4", fromlist=["BeautifulSoup"])
+                    from bs4 import BeautifulSoup
+                    text = BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
+                    content_preview = text[:2000]
+                except Exception:
+                    pass
+                break
 
-    if target is None:
-        send_message(telegram_token, chat_id,
-                      f"⚠️ #{rec['id']}: не знайшов сторінку за шляхом "
-                      f"{rec['target_page_path']}. Потрібно зробити вручну.")
-        rec["status"] = "needs_manual_review"
-        return
+    instruction = call_claude(client, MANUAL_EDIT_PROMPT.format(
+        title=rec["title"],
+        description=rec.get("description", ""),
+        page_url=page_url or rec.get("target_page_path", ""),
+        content_preview=content_preview or "(контент недоступний)",
+    ), max_tokens=1000)
 
-    current_content = wp.get_raw_content(target["id"], post_type)
-
-    # Зберігаємо оригінальний заголовок для можливого відкату
-    if "заголовок" in rec.get("title", "").lower() or "title" in rec.get("title", "").lower():
-        rec["original_title_backup"] = target.get("title", {}).get("rendered", "")
-
-    # Шукаємо зразок блоку на сайті якщо рекомендація про додавання блоку
-    block_template_section = ""
-    block_hints = _detect_block_hints(rec["title"], rec.get("description", ""))
-    if block_hints:
-        found_block = wp.find_block_on_site(block_hints)
-        if found_block:
-            block_template_section = (
-                "ЗРАЗОК БЛОКУ З САЙТУ (використай цю розмітку як основу, змін тільки тексти):\n"
-                "---ЗРАЗОК---\n" + found_block + "\n---КІНЕЦЬ ЗРАЗКА---"
-            )
-
-    updated_content = call_claude(client, EDIT_EXISTING_PROMPT.format(
-        title=rec["title"], description=rec["description"],
-        current_content=current_content,
-        block_template_section=block_template_section,
-    ))
-
-    revision = wp.propose_revision(target["id"], updated_content, post_type)
+    edit_link = f"{wp.base_url}/wp-admin/post.php" if page_url else wp.base_url + "/wp-admin/"
 
     send_message(telegram_token, chat_id,
-                  f"✅ #{rec['id']}: правку для \"{rec['title']}\" підготовано як "
-                  f"чернетку-ревізію вже опублікованої сторінки.\n"
-                  f"Жива сторінка НЕ змінена. Щоб побачити й застосувати правку:\n"
-                  f"1. Відкрий {revision['edit_link']}\n"
-                  f"2. WordPress покаже банер \"Є новіша автозбережена версія\" — "
-                  f"натисни його, щоб завантажити запропоновану правку в редактор.\n"
-                  f"3. Перевір і натисни \"Оновити\", якщо все добре.")
+                 f"✏️ #{rec['id']} — потрібна ручна правка\n\n"
+                 f"<b>{rec['title']}</b>\n\n"
+                 f"Сторінка: {page_url}\n\n"
+                 f"{instruction}\n\n"
+                 f"Після виконання — натисни <b>✅ Зроблено вручну</b> на кнопці вище.")
 
-    rec["status"] = "revision_ready"
-    rec["edit_link"] = revision["edit_link"]
+    rec["status"] = "awaiting_manual"
+    rec["manual_instruction"] = instruction
 
 
 def get_stacked_infobox_comment_positions(markup: str) -> list[tuple[int, int]]:
@@ -445,7 +448,7 @@ def main():
     backlog = load_json("recommendations.json", default=[])
     by_id = {r["id"]: r for r in backlog}
 
-    requested_do, requested_published, requested_reject = [], [], []
+    requested_do, requested_published, requested_reject, requested_done = [], [], [], []
     callbacks_to_answer = []  # (callback_query_id, chat_id, message_id, text)
 
     for update in updates:
@@ -459,11 +462,16 @@ def main():
             cq_chat = str(cq["message"]["chat"]["id"])
             cq_msg_id = cq["message"]["message_id"]
             m_do = re.match(r"do_(\d+)", data)
+            m_done = re.match(r"done_(\d+)", data)
             m_rej = re.match(r"reject_(\d+)", data)
             if m_do:
                 rec_id = int(m_do.group(1))
                 requested_do.append(rec_id)
                 callbacks_to_answer.append((cq_id, cq_chat, cq_msg_id, f"▶️ Виконую #{rec_id}..."))
+            elif m_done:
+                rec_id = int(m_done.group(1))
+                requested_done.append(rec_id)
+                callbacks_to_answer.append((cq_id, cq_chat, cq_msg_id, f"✅ #{rec_id} зафіксовано як виконане"))
             elif m_rej:
                 rec_id = int(m_rej.group(1))
                 requested_reject.append(rec_id)
@@ -518,7 +526,19 @@ def main():
                 continue
             process_recommendation(rec, client, wp, telegram_token, chat_id)
 
-    if requested_do or requested_published or requested_reject:
+    # "Зроблено вручну" — фіксуємо як published
+    for rec_id in requested_done:
+        rec = by_id.get(rec_id)
+        if rec is None:
+            send_message(telegram_token, chat_id, f"⚠️ Рекомендацію #{rec_id} не знайдено.")
+            continue
+        rec["status"] = "published"
+        rec["published_date"] = datetime.date.today().isoformat()
+        send_message(telegram_token, chat_id,
+                     f"✅ #{rec_id} «{rec['title']}» зафіксовано як виконане вручну.\n"
+                     f"Через ~14 днів у звіті побачимо чи це дало результат.")
+
+    if requested_do or requested_published or requested_reject or requested_done:
         save_json("recommendations.json", list(by_id.values()))
 
 
