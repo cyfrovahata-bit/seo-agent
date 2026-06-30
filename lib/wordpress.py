@@ -183,9 +183,19 @@ class WordPressClient:
 
     def propose_revision(self, post_id: int, content: str, post_type: str = "posts") -> dict:
         """Для ВЖЕ ОПУБЛІКОВАНОЇ сторінки — створює autosave-ревізію.
-        Жива сторінка лишається незмінною, доки людина не підтвердить у редакторі."""
-        result = self._post(f"{post_type}/{post_id}/autosaves", {"content": content})
-        return {
-            "id": result["id"],
-            "edit_link": f"{self.base_url}/wp-admin/post.php?post={post_id}&action=edit",
-        }
+        Якщо autosave недоступний (401) — створює чернетку з тим самим контентом."""
+        try:
+            result = self._post(f"{post_type}/{post_id}/autosaves", {"content": content})
+            return {
+                "id": result["id"],
+                "edit_link": f"{self.base_url}/wp-admin/post.php?post={post_id}&action=edit",
+            }
+        except Exception:
+            # Fallback: створити чернетку якщо autosave недоступний
+            item = self._get(f"{post_type}/{post_id}")
+            title = item.get("title", {}).get("rendered", "Без назви")
+            result = self._post(post_type, {"title": f"[ПРАВКА] {title}", "content": content, "status": "draft"})
+            return {
+                "id": result["id"],
+                "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
+            }
