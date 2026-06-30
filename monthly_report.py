@@ -106,7 +106,7 @@ def main():
         backlog=backlog,
         ga4_events=ga4_events,
         technical_data=technical_audit,
-        mode="weekly",
+        mode="monthly",
         today=today,
     )
 
