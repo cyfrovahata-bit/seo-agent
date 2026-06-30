@@ -19,7 +19,7 @@ import os
 
 import anthropic
 
-from lib.google_seo import get_search_console_data, get_ga4_data, get_ga4_events
+from lib.google_seo import get_search_console_data, get_ga4_data, get_ga4_events, get_ga4_page_conversions, get_ga4_traffic_channels
 from lib.technical_seo import run_technical_audit
 from lib.wordpress import WordPressClient
 from lib.state import load_json
@@ -78,6 +78,20 @@ def main():
         os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
         month_start, today_str,
     )
+    try:
+        page_conversions = get_ga4_page_conversions(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
+            month_start, today_str,
+        )
+    except Exception:
+        page_conversions = {}
+    try:
+        traffic_channels = get_ga4_traffic_channels(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
+            month_start, today_str,
+        )
+    except Exception:
+        traffic_channels = {}
 
     wp = WordPressClient(
         os.environ["WP_BASE_URL"], os.environ["WP_USERNAME"], os.environ["WP_APP_PASSWORD"],
@@ -108,6 +122,8 @@ def main():
         technical_data=technical_audit,
         mode="monthly",
         today=today,
+        page_conversions=page_conversions,
+        traffic_channels=traffic_channels,
     )
 
     user_message = f"""

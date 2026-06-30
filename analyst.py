@@ -14,7 +14,7 @@ import json
 
 import anthropic
 
-from lib.google_seo import get_search_console_data, get_ga4_data, get_ga4_events
+from lib.google_seo import get_search_console_data, get_ga4_data, get_ga4_events, get_ga4_page_conversions, get_ga4_traffic_channels
 from lib.metrics import aggregate_site_totals, find_page_metrics, IMPACT_REVIEW_DAYS
 from lib.explain_why import build_explain_why, record_outcome
 from lib.state import load_json, save_json
@@ -232,6 +232,22 @@ def main():
     except Exception:
         ga4_events = []
 
+    try:
+        page_conversions = get_ga4_page_conversions(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
+            start_date, end_date,
+        )
+    except Exception:
+        page_conversions = {}
+
+    try:
+        traffic_channels = get_ga4_traffic_channels(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
+            start_date, end_date,
+        )
+    except Exception:
+        traffic_channels = {}
+
     history = load_json("metrics_history.json", default=[])
     backlog = load_json("recommendations.json", default=[])
 
@@ -396,6 +412,8 @@ def main():
         mode=mode,
         today=today,
         learning_log=learning_log,
+        page_conversions=page_conversions,
+        traffic_channels=traffic_channels,
     )
 
     user_message = (
@@ -452,7 +470,16 @@ def main():
             worked = False
         rec_match = next((r for r in backlog if r["id"] == review["id"]), {})
         cause_type = ACTION_TO_CAUSE.get(rec_match.get("action", ""), "content_improvement_effect")
-        learning_log = record_outcome(review["id"], cause_type, worked, learning_log, today)
+        page = rec_match.get("target_page_path")
+        funnel_after = None
+        if page:
+            from lib.metrics import build_page_funnel
+            funnel_after = build_page_funnel(page, gsc_data, ga4_data, page_conversions, {})
+        learning_log = record_outcome(
+            review["id"], cause_type, worked, learning_log, today,
+            funnel_before=rec_match.get("baseline_metrics"),
+            funnel_after=funnel_after,
+        )
     save_json("learning_log.json", learning_log[-500:])
 
     next_id = (max((r["id"] for r in backlog), default=0)) + 1

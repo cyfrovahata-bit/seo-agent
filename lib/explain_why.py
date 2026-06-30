@@ -77,6 +77,9 @@ class ExplainResult:
     conversion_analysis: str               # аналіз конверсій
     recent_changes_analysis: list[str]     # ефект нещодавніх змін
     has_data: bool
+    funnel_pages: list[dict] = field(default_factory=list)   # повна воронка по сторінках
+    traffic_channels_text: str = ""
+    page_rankings_text: str = ""
 
 
 @dataclass
@@ -111,6 +114,9 @@ class DataContext:
     google_ads_data: dict | None = None
     clarity_data: dict | None = None
     backlinks_data: dict | None = None
+    # Воронка v3: конверсії по сторінках і канали трафіку
+    page_conversions: dict = field(default_factory=dict)
+    traffic_channels: dict = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────
@@ -419,6 +425,195 @@ def _prev_totals_from_history(history: list[dict], mode: str) -> dict | None:
 
 
 # ─────────────────────────────────────────────
+# Правила воронки (per-page breakpoints)
+# ─────────────────────────────────────────────
+
+def _funnel_breakpoint_rules(page: str, funnel: dict, ctx: DataContext) -> list[Cause]:
+    """Знаходить розриви воронки для конкретної сторінки."""
+    causes = []
+    impressions = funnel.get("impressions", 0)
+    ctr = funnel.get("ctr", 0.0)
+    clicks = funnel.get("clicks", 0)
+    sessions = funnel.get("sessions", 0)
+    avg_dur = funnel.get("avg_duration_sec", 0.0)
+    total_conv = funnel.get("total_conversions", 0)
+    tg = funnel.get("telegram_click", 0)
+    form = funnel.get("form_submit", 0)
+
+    # Багато показів → мало CTR → проблема title/description
+    if impressions >= 50 and ctr < 2.0:
+        causes.append(Cause(
+            cause_type="low_ctr_title",
+            description=f"{page}: {impressions} показів але CTR {ctr:.1f}% — title або description слабкий",
+            evidence=[Evidence(f"{impressions} показів, {clicks} кліків, CTR {ctr:.1f}%", "GSC", 88)],
+            confidence=_adjusted(85, "low_ctr_title", ctx.learning_log),
+            recommendation="Переписати title/description: додати цифри, вигоди, CTA у snippet",
+            expected_effect="CTR +1-3% → десятки додаткових відвідувачів без нових позицій",
+            risk="Низький CTR = витрачений потенціал навіть при хороших позиціях",
+        ))
+
+    # Кліки є → сесій немає → проблема з аналітикою або редирект
+    if clicks >= 5 and sessions == 0:
+        causes.append(Cause(
+            cause_type="clicks_no_sessions",
+            description=f"{page}: {clicks} кліків у GSC але 0 сесій в GA4 — GA4 тег або редирект",
+            evidence=[
+                Evidence(f"GSC: {clicks} кліків", "GSC", 90),
+                Evidence(f"GA4: 0 сесій", "GA4", 90),
+            ],
+            confidence=_adjusted(80, "clicks_no_sessions", ctx.learning_log),
+            recommendation="Перевірити: 1) GA4 тег на сторінці, 2) редирект що скидає UTM, 3) realtime GA4",
+            expected_effect="Після виправлення аналітика показуватиме реальний трафік",
+            risk="Без GA4 даних неможливо оцінити ефект будь-яких змін",
+        ))
+
+    # Сесії є → дуже мало часу → контент не відповідає наміру
+    if sessions >= 10 and avg_dur < 20:
+        causes.append(Cause(
+            cause_type="low_engagement_bounce",
+            description=f"{page}: {sessions} сесій, але час {avg_dur:.0f}с — контент не відповідає наміру",
+            evidence=[Evidence(f"{sessions} сесій, {avg_dur:.0f}с середній час", "GA4", 82)],
+            confidence=_adjusted(80, "low_engagement_bounce", ctx.learning_log),
+            recommendation="Вступний абзац повинен одразу відповідати запиту з якого приходять",
+            expected_effect="Час на сторінці +30-60с → кращі поведінкові сигнали для Google",
+            risk="Низький engagement погіршує позиції через поведінкові фактори",
+        ))
+
+    # Хороший engagement → нуль конверсій → CTA проблема
+    if sessions >= 10 and avg_dur > 90 and total_conv == 0:
+        causes.append(Cause(
+            cause_type="engagement_no_cta",
+            description=f"{page}: читають {avg_dur:.0f}с але 0 конверсій — CTA слабкий або розміщений погано",
+            evidence=[Evidence(f"{sessions} сесій, {avg_dur:.0f}с, 0 конверсій", "GA4", 78)],
+            confidence=_adjusted(75, "engagement_no_cta", ctx.learning_log),
+            recommendation="Додати CTA в середину сторінки (не лише знизу), контрастний колір кнопки",
+            expected_effect="Конверсія +0.5-2% після покращення розміщення CTA",
+            risk="Зацікавлені читачі йдуть — пряма втрата потенційних клієнтів",
+        ))
+
+    # Telegram є → форми немає → аудиторія надає перевагу месенджерам
+    if tg > 0 and form == 0 and sessions >= 5:
+        causes.append(Cause(
+            cause_type="telegram_preferred",
+            description=f"{page}: Telegram {tg}x але форма 0 — аудиторія обирає месенджери",
+            evidence=[Evidence(f"telegram_click: {tg}, form_submit: {form}", "GA4", 75)],
+            confidence=_adjusted(70, "telegram_preferred", ctx.learning_log),
+            recommendation="Додати більше Telegram-кнопок, спростити форму або зробити її менш формальною",
+            expected_effect="Більше звернень через Telegram → загальна конверсія зросте",
+            risk="Ігнорування вподобань аудиторії = втрата звернень",
+        ))
+
+    return causes
+
+
+def _normalize_page_path(raw: str) -> str:
+    """Нормалізує шлях: /seo/ і /seo → /seo, кореневий / лишається /."""
+    p = raw.rstrip("/")
+    return p or "/"
+
+
+def _build_funnel_analysis(ctx: DataContext) -> list[dict]:
+    """Будує повну воронку для всіх сторінок з достатнім трафіком."""
+    from lib.metrics import build_page_funnel
+    pages_seen: set = set()
+    all_page_paths: set = set()
+    for row in ctx.gsc_data:
+        p = _normalize_page_path(_path_from_url(row.get("page", "")))
+        if p:
+            all_page_paths.add(p)
+    for row in ctx.ga4_data:
+        p = _normalize_page_path(row.get("page", ""))
+        if p:
+            all_page_paths.add(p)
+
+    results = []
+    for page_path in all_page_paths:
+        if page_path in pages_seen:
+            continue
+        pages_seen.add(page_path)
+        funnel = build_page_funnel(page_path, ctx.gsc_data, ctx.ga4_data, ctx.page_conversions, {})
+        if funnel["sessions"] < 3 and funnel["impressions"] < 10:
+            continue
+        causes = _funnel_breakpoint_rules(page_path, funnel, ctx)
+        results.append({**funnel, "causes": causes})
+
+    results.sort(key=lambda x: x["sessions"] * 1 + x["total_conversions"] * 10, reverse=True)
+    return results
+
+
+def _format_funnel_block(funnel_pages: list[dict]) -> str:
+    if not funnel_pages:
+        return ""
+    lines = ["\n📊 SEO ВОРОНКА ПО СТОРІНКАХ:"]
+    for f in funnel_pages[:10]:
+        page = f["page"]
+        cr_str = f"{f['conversion_rate']:.1f}%" if f["sessions"] > 0 else "—"
+        ctr_str = f"{f['ctr']:.1f}%" if f["impressions"] > 0 else "—"
+        lines.append(
+            f"\n  {page}\n"
+            f"    Покази: {f['impressions']} | CTR: {ctr_str} | Кліки: {f['clicks']}\n"
+            f"    Сесії: {f['sessions']} | Час: {f['avg_duration_sec']:.0f}с | Відмови: {f['bounce_rate']:.0f}%\n"
+            f"    📞 {f['phone_click']} Тел | 💬 {f['telegram_click']} TG | 📝 {f['form_submit']} Форм | CR: {cr_str}"
+        )
+        for c in f.get("causes", [])[:2]:
+            lines.append(f"    ⚡ [{_conf_bar(c.confidence)}] {c.description}")
+            lines.append(f"       → {c.recommendation}")
+    return "\n".join(lines)
+
+
+def _format_page_rankings(funnel_pages: list[dict]) -> str:
+    if not funnel_pages:
+        return ""
+    from lib.metrics import score_page_priority
+    lines = ["\n🏆 РЕЙТИНГ СТОРІНОК:"]
+
+    by_conv = sorted(funnel_pages, key=lambda x: -x["total_conversions"])
+    if any(f["total_conversions"] > 0 for f in by_conv):
+        lines.append("  За конверсіями:")
+        for f in by_conv[:5]:
+            if f["total_conversions"] > 0:
+                lines.append(f"    {f['page']} — {f['total_conversions']} конв. (CR {f['conversion_rate']:.1f}%)")
+
+    by_sessions = sorted(funnel_pages, key=lambda x: -x["sessions"])
+    lines.append("  За трафіком:")
+    for f in by_sessions[:5]:
+        if f["sessions"] > 0:
+            lines.append(f"    {f['page']} — {f['sessions']} сесій")
+
+    by_ctr = sorted([f for f in funnel_pages if f["impressions"] >= 20], key=lambda x: -x["ctr"])
+    if by_ctr:
+        lines.append("  За CTR (мін. 20 показів):")
+        for f in by_ctr[:3]:
+            lines.append(f"    {f['page']} — CTR {f['ctr']:.1f}% ({f['impressions']} показів)")
+
+    scored = sorted(funnel_pages, key=lambda x: -score_page_priority(x))
+    if scored:
+        lines.append("  Пріоритет (★ = бізнес-цінність):")
+        max_score = score_page_priority(scored[0]) or 1
+        for f in scored[:6]:
+            score = score_page_priority(f)
+            stars = min(5, max(1, round(score / max_score * 5)))
+            star_str = "★" * stars + "☆" * (5 - stars)
+            lines.append(f"    {star_str} {f['page']}")
+
+    return "\n".join(lines)
+
+
+def _format_traffic_channels(traffic_channels: dict) -> str:
+    if not traffic_channels:
+        return ""
+    total_sessions = sum(v.get("sessions", 0) for v in traffic_channels.values())
+    if total_sessions == 0:
+        return ""
+    lines = ["\n📡 КАНАЛИ ТРАФІКУ:"]
+    for channel, data in sorted(traffic_channels.items(), key=lambda x: -x[1].get("sessions", 0)):
+        sessions = data.get("sessions", 0)
+        pct = round(sessions / total_sessions * 100, 1) if total_sessions else 0
+        lines.append(f"  {channel}: {sessions} сесій ({pct}%)")
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────
 # Побудова CausalChain
 # ─────────────────────────────────────────────
 
@@ -597,6 +792,19 @@ def _format_result(result: ExplainResult) -> str:
         sections.append("\n  📌 Ефект нещодавніх змін:")
         sections.extend(result.recent_changes_analysis)
 
+    # 5. Канали трафіку
+    if result.traffic_channels_text:
+        sections.append(result.traffic_channels_text)
+
+    # 6. SEO воронка по сторінках
+    funnel_text = _format_funnel_block(result.funnel_pages)
+    if funnel_text:
+        sections.append(funnel_text)
+
+    # 7. Рейтинг сторінок
+    if result.page_rankings_text:
+        sections.append(result.page_rankings_text)
+
     if not result.has_data:
         sections.append("  (недостатньо даних для аналізу — потрібна більша historія)")
 
@@ -624,6 +832,8 @@ def build_data_context(
     learning_log: list[dict],
     mode: str,
     today: datetime.date,
+    page_conversions: dict | None = None,
+    traffic_channels: dict | None = None,
 ) -> DataContext:
     """Збирає DataContext з усіх доступних джерел."""
     prev_totals = _prev_totals_from_history(history, mode)
@@ -665,6 +875,8 @@ def build_data_context(
         learning_log=learning_log,
         mode=mode,
         today=today,
+        page_conversions=page_conversions or {},
+        traffic_channels=traffic_channels or {},
     )
 
 
@@ -674,6 +886,7 @@ def analyze(ctx: DataContext) -> ExplainResult:
     query_nodes = _build_query_nodes(ctx)
     conversion_analysis = _build_conversion_chain(ctx)
     recent_changes = _build_recent_changes_analysis(ctx)
+    funnel_pages = _build_funnel_analysis(ctx)
     has_data = bool(site_chains or query_nodes or ctx.recent_published)
     return ExplainResult(
         site_chains=site_chains,
@@ -682,6 +895,9 @@ def analyze(ctx: DataContext) -> ExplainResult:
         conversion_analysis=conversion_analysis,
         recent_changes_analysis=recent_changes,
         has_data=has_data,
+        funnel_pages=funnel_pages,
+        traffic_channels_text=_format_traffic_channels(ctx.traffic_channels),
+        page_rankings_text=_format_page_rankings(funnel_pages),
     )
 
 
@@ -739,17 +955,35 @@ def analyze_for_impact_review(rec: dict, ctx: DataContext) -> str:
     return "\n".join(lines)
 
 
-def record_outcome(rec_id: int, cause_type: str, worked: bool, learning_log: list[dict], today: datetime.date) -> list[dict]:
+def record_outcome(
+    rec_id: int,
+    cause_type: str,
+    worked: bool,
+    learning_log: list[dict],
+    today: datetime.date,
+    funnel_before: dict | None = None,
+    funnel_after: dict | None = None,
+) -> list[dict]:
     """Фіксує результат у learning_log — викликається з analyst.py після impact review."""
-    # Пропускаємо дублікат якщо для цього rec_id вже є запис
     if any(e.get("rec_id") == rec_id for e in learning_log):
         return learning_log
-    learning_log.append({
+    entry: dict = {
         "rec_id": rec_id,
         "cause_type": cause_type,
         "worked": worked,
         "date": today.isoformat(),
-    })
+    }
+    if funnel_before:
+        entry["funnel_before"] = {
+            k: funnel_before.get(k)
+            for k in ("clicks", "impressions", "sessions", "conversion_rate", "ctr")
+        }
+    if funnel_after:
+        entry["funnel_after"] = {
+            k: funnel_after.get(k)
+            for k in ("clicks", "impressions", "sessions", "conversion_rate", "ctr")
+        }
+    learning_log.append(entry)
     return learning_log[-500:]
 
 
@@ -765,6 +999,8 @@ def build_explain_why(
     mode: str,
     today: datetime.date,
     learning_log: list[dict] | None = None,
+    page_conversions: dict | None = None,
+    traffic_channels: dict | None = None,
 ) -> str:
     """
     Зворотно сумісний публічний метод.
@@ -782,6 +1018,8 @@ def build_explain_why(
         learning_log=learning_log or [],
         mode=mode,
         today=today,
+        page_conversions=page_conversions,
+        traffic_channels=traffic_channels,
     )
     result = analyze(ctx)
     return _format_result(result)
