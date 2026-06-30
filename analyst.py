@@ -24,7 +24,7 @@ from lib.wordpress import WordPressClient
 from lib.competitors import analyze_competitors
 from lib.technical_seo import run_technical_audit
 from lib.backlinks import get_backlink_report
-from lib.target_keywords import build_target_keyword_report, build_cluster_summary
+from lib.target_keywords import build_target_keyword_report, build_cluster_summary, build_auto_cluster_report
 
 MODEL = "claude-sonnet-4-6"
 MAX_HISTORY_ENTRIES = 90  # зберігати до 90 записів (~3 місяці щоденних)
@@ -454,6 +454,7 @@ def main():
         f"{keyword_trends[:20] if keyword_trends else 'Ще немає даних для порівняння.'}\n\n"
         f"{build_cluster_summary(gsc_data)}\n\n"
         f"{build_target_keyword_report(keyword_history)}"
+        f"{build_auto_cluster_report(gsc_data)}"
         f"{revert_section}{technical_section}{competitor_section}{backlink_section}"
     )
 
@@ -498,6 +499,7 @@ def main():
             review["id"], cause_type, worked, learning_log, today,
             funnel_before=rec_match.get("baseline_metrics"),
             funnel_after=funnel_after,
+            page=page,
         )
     save_json("learning_log.json", learning_log[-500:])
 

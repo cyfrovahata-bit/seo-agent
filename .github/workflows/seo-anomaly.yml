@@ -1,0 +1,36 @@
+name: SEO Anomaly Alert
+
+on:
+  schedule:
+    # Кожні 4 години
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  anomaly-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python anomaly_alert.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+
+      - name: Зберегти стан алертів
+        run: |
+          git config user.name "seo-agent"
+          git config user.email "seo-agent@users.noreply.github.com"
+          git add data/anomaly_last_alert.json || true
+          git diff --quiet --cached || git commit -m "chore: anomaly alert state [skip ci]"
+          git push || true

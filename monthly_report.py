@@ -28,7 +28,7 @@ from lib.explain_why import build_explain_why_full
 from lib.decision_engine import build_decision_plan
 from lib.metrics import aggregate_site_totals
 
-MODEL = "claude-opus-4-7"
+MODEL = "claude-opus-4-8"
 
 SYSTEM_PROMPT = """\
 Ти — провідний (senior) SEO-консультант, що веде сайт cyfrovahata.com.ua —

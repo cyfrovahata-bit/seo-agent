@@ -5,11 +5,31 @@
 Запускається раз на місяць (важче навантаження, ніж тижневий звіт).
 """
 
+import datetime
+import json
+import os
+
 import requests
 from bs4 import BeautifulSoup
 
 PAGESPEED_API = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 MAX_PAGES_TO_CHECK = 30  # обмеження, щоб не перевантажувати GitHub Actions runner
+PAGESPEED_CACHE_FILE = "data/pagespeed_cache.json"
+PAGESPEED_CACHE_TTL_DAYS = 7
+
+
+def _load_pagespeed_cache() -> dict:
+    try:
+        with open(PAGESPEED_CACHE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_pagespeed_cache(cache: dict) -> None:
+    os.makedirs("data", exist_ok=True)
+    with open(PAGESPEED_CACHE_FILE, "w") as f:
+        json.dump(cache, f, ensure_ascii=False, indent=2)
 
 
 def check_pagespeed(url: str, api_key: str, strategy: str = "mobile") -> dict:
@@ -93,10 +113,20 @@ def run_technical_audit(wp_client, base_url: str, pagespeed_api_key: str | None)
 
     pagespeed = None
     if pagespeed_api_key:
-        try:
-            pagespeed = check_pagespeed(base_url, pagespeed_api_key)
-        except Exception as e:
-            pagespeed = {"error": str(e)}
+        cache = _load_pagespeed_cache()
+        cache_key = base_url.rstrip("/")
+        cached_entry = cache.get(cache_key, {})
+        cached_date = cached_entry.get("cached_date", "")
+        cache_age_days = (datetime.date.today() - datetime.date.fromisoformat(cached_date)).days if cached_date else 999
+        if cache_age_days < PAGESPEED_CACHE_TTL_DAYS:
+            pagespeed = cached_entry.get("data")
+        else:
+            try:
+                pagespeed = check_pagespeed(base_url, pagespeed_api_key)
+                cache[cache_key] = {"cached_date": datetime.date.today().isoformat(), "data": pagespeed}
+                _save_pagespeed_cache(cache)
+            except Exception as e:
+                pagespeed = cached_entry.get("data") or {"error": str(e)}
 
     return {
         "robots_and_sitemap": check_robots_and_sitemap(base_url),

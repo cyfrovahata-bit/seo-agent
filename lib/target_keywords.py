@@ -78,6 +78,58 @@ def build_target_keyword_report(keyword_history: dict) -> str:
     return "\n".join(lines)
 
 
+def auto_cluster_queries(gsc_data: list[dict], min_queries: int = 200) -> dict[str, list[str]]:
+    """
+    Якщо в GSC більше min_queries запитів — автоматично кластеризує їх за спільними словами.
+    Повертає словник {cluster_name: [query, ...]} або порожній dict якщо запитів замало.
+    Не замінює TARGET_KEYWORDS — доповнює ручну кластеризацію новими темами.
+    """
+    queries = [r.get("query", "").lower() for r in gsc_data if r.get("query")]
+    if len(queries) < min_queries:
+        return {}
+
+    from collections import Counter
+
+    # Збираємо всі слова довжиною ≥5 символів
+    word_counter: Counter = Counter()
+    for q in queries:
+        for word in q.split():
+            if len(word) >= 5:
+                word_counter[word] += 1
+
+    # Топ-слова (мінімум у 3 запитах) — кандидати в назви кластерів
+    cluster_seeds = [w for w, cnt in word_counter.most_common(50) if cnt >= 3]
+
+    # Ігноруємо стоп-слова
+    STOP = {
+        "через", "своє", "своїх", "якість", "послуги", "замовити",
+        "після", "перед", "більше", "менше", "такий", "також",
+    }
+    cluster_seeds = [w for w in cluster_seeds if w not in STOP]
+
+    # Призначаємо кожен запит до першого підходящого кластера
+    clusters: dict[str, list[str]] = {}
+    assigned: set[str] = set()
+    for seed in cluster_seeds[:15]:
+        members = [q for q in queries if seed in q and q not in assigned]
+        if len(members) >= 3:
+            clusters[seed] = members[:20]
+            assigned.update(members)
+
+    return clusters
+
+
+def build_auto_cluster_report(gsc_data: list[dict]) -> str:
+    """Повертає текстовий звіт з автоматичних кластерів для Claude-промпту."""
+    clusters = auto_cluster_queries(gsc_data)
+    if not clusters:
+        return ""
+    lines = [f"\nАВТОКЛАСТЕРИ GSC (знайдено {len(clusters)} нових тем):"]
+    for cluster_name, members in list(clusters.items())[:10]:
+        lines.append(f"  {cluster_name}: {len(members)} запитів → напр. «{members[0]}»")
+    return "\n".join(lines)
+
+
 def build_cluster_summary(gsc_data: list[dict]) -> str:
     """Групує реальні GSC-запити по кластерах і показує силу кожного."""
     cluster_stats: dict[str, dict] = {k: {"clicks": 0, "impressions": 0, "queries": []} for k in CLUSTERS}

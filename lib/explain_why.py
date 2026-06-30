@@ -148,20 +148,26 @@ def _conf_bar(confidence: int) -> str:
     return f"{confidence}% {'★' * stars}{'☆' * (5 - stars)}"
 
 
-def _learning_boost(cause_type: str, learning_log: list[dict]) -> int:
+def _learning_boost(cause_type: str, learning_log: list[dict], page: str | None = None) -> int:
     """
     Коригує confidence на основі того, чи спрацювала ця причина раніше.
     +10 за кожен підтверджений випадок, -8 за кожен спростований (max ±30).
+    Якщо page вказано — спочатку шукає записи для цієї сторінки, fallback до всіх.
     """
-    relevant = [e for e in learning_log if e.get("cause_type") == cause_type]
+    if page:
+        relevant = [e for e in learning_log if e.get("cause_type") == cause_type and e.get("page") == page]
+        if not relevant:
+            relevant = [e for e in learning_log if e.get("cause_type") == cause_type]
+    else:
+        relevant = [e for e in learning_log if e.get("cause_type") == cause_type]
     if not relevant:
         return 0
     delta = sum(10 if e.get("worked") else -8 for e in relevant)
     return max(-30, min(30, delta))
 
 
-def _adjusted(base_confidence: int, cause_type: str, learning_log: list[dict]) -> int:
-    return max(5, min(98, base_confidence + _learning_boost(cause_type, learning_log)))
+def _adjusted(base_confidence: int, cause_type: str, learning_log: list[dict], page: str | None = None) -> int:
+    return max(5, min(98, base_confidence + _learning_boost(cause_type, learning_log, page)))
 
 
 # ─────────────────────────────────────────────
@@ -446,7 +452,7 @@ def _funnel_breakpoint_rules(page: str, funnel: dict, ctx: DataContext) -> list[
             cause_type="low_ctr_title",
             description=f"{page}: {impressions} показів але CTR {ctr:.1f}% — title або description слабкий",
             evidence=[Evidence(f"{impressions} показів, {clicks} кліків, CTR {ctr:.1f}%", "GSC", 88)],
-            confidence=_adjusted(85, "low_ctr_title", ctx.learning_log),
+            confidence=_adjusted(85, "low_ctr_title", ctx.learning_log, page),
             recommendation="Переписати title/description: додати цифри, вигоди, CTA у snippet",
             expected_effect="CTR +1-3% → десятки додаткових відвідувачів без нових позицій",
             risk="Низький CTR = витрачений потенціал навіть при хороших позиціях",
@@ -461,7 +467,7 @@ def _funnel_breakpoint_rules(page: str, funnel: dict, ctx: DataContext) -> list[
                 Evidence(f"GSC: {clicks} кліків", "GSC", 90),
                 Evidence(f"GA4: 0 сесій", "GA4", 90),
             ],
-            confidence=_adjusted(80, "clicks_no_sessions", ctx.learning_log),
+            confidence=_adjusted(80, "clicks_no_sessions", ctx.learning_log, page),
             recommendation="Перевірити: 1) GA4 тег на сторінці, 2) редирект що скидає UTM, 3) realtime GA4",
             expected_effect="Після виправлення аналітика показуватиме реальний трафік",
             risk="Без GA4 даних неможливо оцінити ефект будь-яких змін",
@@ -473,7 +479,7 @@ def _funnel_breakpoint_rules(page: str, funnel: dict, ctx: DataContext) -> list[
             cause_type="low_engagement_bounce",
             description=f"{page}: {sessions} сесій, але час {avg_dur:.0f}с — контент не відповідає наміру",
             evidence=[Evidence(f"{sessions} сесій, {avg_dur:.0f}с середній час", "GA4", 82)],
-            confidence=_adjusted(80, "low_engagement_bounce", ctx.learning_log),
+            confidence=_adjusted(80, "low_engagement_bounce", ctx.learning_log, page),
             recommendation="Вступний абзац повинен одразу відповідати запиту з якого приходять",
             expected_effect="Час на сторінці +30-60с → кращі поведінкові сигнали для Google",
             risk="Низький engagement погіршує позиції через поведінкові фактори",
@@ -485,7 +491,7 @@ def _funnel_breakpoint_rules(page: str, funnel: dict, ctx: DataContext) -> list[
             cause_type="engagement_no_cta",
             description=f"{page}: читають {avg_dur:.0f}с але 0 конверсій — CTA слабкий або розміщений погано",
             evidence=[Evidence(f"{sessions} сесій, {avg_dur:.0f}с, 0 конверсій", "GA4", 78)],
-            confidence=_adjusted(75, "engagement_no_cta", ctx.learning_log),
+            confidence=_adjusted(75, "engagement_no_cta", ctx.learning_log, page),
             recommendation="Додати CTA в середину сторінки (не лише знизу), контрастний колір кнопки",
             expected_effect="Конверсія +0.5-2% після покращення розміщення CTA",
             risk="Зацікавлені читачі йдуть — пряма втрата потенційних клієнтів",
@@ -497,7 +503,7 @@ def _funnel_breakpoint_rules(page: str, funnel: dict, ctx: DataContext) -> list[
             cause_type="telegram_preferred",
             description=f"{page}: Telegram {tg}x але форма 0 — аудиторія обирає месенджери",
             evidence=[Evidence(f"telegram_click: {tg}, form_submit: {form}", "GA4", 75)],
-            confidence=_adjusted(70, "telegram_preferred", ctx.learning_log),
+            confidence=_adjusted(70, "telegram_preferred", ctx.learning_log, page),
             recommendation="Додати більше Telegram-кнопок, спростити форму або зробити її менш формальною",
             expected_effect="Більше звернень через Telegram → загальна конверсія зросте",
             risk="Ігнорування вподобань аудиторії = втрата звернень",
@@ -969,6 +975,7 @@ def record_outcome(
     today: datetime.date,
     funnel_before: dict | None = None,
     funnel_after: dict | None = None,
+    page: str | None = None,
 ) -> list[dict]:
     """Фіксує результат у learning_log — викликається з analyst.py після impact review."""
     if any(e.get("rec_id") == rec_id for e in learning_log):
@@ -979,6 +986,8 @@ def record_outcome(
         "worked": worked,
         "date": today.isoformat(),
     }
+    if page:
+        entry["page"] = page
     if funnel_before:
         entry["funnel_before"] = {
             k: funnel_before.get(k)

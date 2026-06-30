@@ -110,18 +110,24 @@ class ActionItem:
 # Внутрішні розрахунки
 # ─────────────────────────────────────────────
 
-def _learning_stats(cause_type: str, learning_log: list[dict]) -> tuple[int, int]:
-    """Повертає (кількість успіхів, загальна кількість) для cause_type."""
-    entries = [e for e in learning_log if e.get("cause_type") == cause_type]
+def _learning_stats(cause_type: str, learning_log: list[dict], page: str | None = None) -> tuple[int, int]:
+    """Повертає (кількість успіхів, загальна кількість) для cause_type.
+    Якщо page вказано — спочатку шукає per-page записи, fallback до всіх."""
+    if page:
+        entries = [e for e in learning_log if e.get("cause_type") == cause_type and e.get("page") == page]
+        if not entries:
+            entries = [e for e in learning_log if e.get("cause_type") == cause_type]
+    else:
+        entries = [e for e in learning_log if e.get("cause_type") == cause_type]
     return sum(1 for e in entries if e.get("worked")), len(entries)
 
 
-def _learning_confidence_factor(cause_type: str, learning_log: list[dict]) -> float:
+def _learning_confidence_factor(cause_type: str, learning_log: list[dict], page: str | None = None) -> float:
     """
     Множник 0.5–1.3 на основі успішності в learning_log.
     Немає даних → 1.0 (нейтрально).
     """
-    successes, total = _learning_stats(cause_type, learning_log)
+    successes, total = _learning_stats(cause_type, learning_log, page)
     if total == 0:
         return 1.0
     return 0.5 + (successes / total) * 0.8
@@ -285,7 +291,7 @@ def _build_action(
     biz_value = _page_business_value(page, funnel_pages)   # 0–30
     traffic_pot = min(25.0, exp_clicks * 0.5)              # 0–25
     conv_pot = min(25.0, exp_conv * 15)                    # 0–25
-    learn_factor = _learning_confidence_factor(cause_type, learning_log)
+    learn_factor = _learning_confidence_factor(cause_type, learning_log, page)
     learn_score = min(20.0, cause.confidence * 0.2 * learn_factor)  # 0–20
     age = _age_boost(page, backlog, today)                 # 0–10
 
@@ -307,7 +313,7 @@ def _build_action(
             parts.append(f"{funnel['impressions']} показів")
         if funnel.get("sessions", 0) > 0:
             parts.append(f"{funnel['sessions']} сесій")
-    successes, total = _learning_stats(cause_type, learning_log)
+    successes, total = _learning_stats(cause_type, learning_log, page)
     if total > 0:
         parts.append(f"learning: {successes}/{total}")
     reason = cause.description
@@ -328,6 +334,47 @@ def _build_action(
         reason=reason[:150],
         alternatives=ALTERNATIVES.get(cause_type, [])[:2],
     )
+
+
+# ─────────────────────────────────────────────
+# Семантична дедублікація
+# ─────────────────────────────────────────────
+
+def _keyword_overlap(a: str, b: str, min_len: int = 4) -> bool:
+    """True якщо рядки a і b мають спільне змістовне слово (≥4 символи)."""
+    words_a = {w.lower() for w in a.split() if len(w) >= min_len}
+    words_b = {w.lower() for w in b.split() if len(w) >= min_len}
+    return bool(words_a & words_b)
+
+
+def _semantic_dedup(actions: list[ActionItem]) -> tuple[list[ActionItem], list[str]]:
+    """
+    Якщо два різних ActionItem (різні cause_type) мають схожий title
+    (є спільні ключові слова), залишаємо тільки той з вищим priority_score
+    і генеруємо попередження.
+    """
+    kept: list[ActionItem] = []
+    warnings: list[str] = []
+    for action in actions:
+        duplicate_of = None
+        for existing in kept:
+            if existing.cause_type != action.cause_type and _keyword_overlap(existing.title, action.title):
+                duplicate_of = existing
+                break
+        if duplicate_of:
+            if action.priority_score > duplicate_of.priority_score:
+                kept.remove(duplicate_of)
+                kept.append(action)
+                warnings.append(
+                    f"Схожі дії об'єднано: «{action.title[:40]}» замінює «{duplicate_of.title[:40]}» (вищий пріоритет)"
+                )
+            else:
+                warnings.append(
+                    f"Схожі дії пропущено: «{action.title[:40]}» → вже є «{duplicate_of.title[:40]}»"
+                )
+        else:
+            kept.append(action)
+    return kept, warnings
 
 
 # ─────────────────────────────────────────────
@@ -479,8 +526,9 @@ def build_decision_plan(
         if item:
             actions.append(item)
 
-    # 3. Сортуємо за пріоритетом
+    # 3. Сортуємо за пріоритетом + семантична дедублікація
     actions.sort(key=lambda a: -a.priority_score)
+    actions, sem_warnings = _semantic_dedup(actions)
     actions = actions[:20]  # не більше 20 дій у плані
 
     # 4. Розбиваємо по категоріях
@@ -531,10 +579,12 @@ def build_decision_plan(
             lines.append(f"  {idx}. {a.title}{page_str}")
             idx += 1
 
-    if conflicts:
+    if conflicts or sem_warnings:
         lines.append("\n⚠️ КОНФЛІКТИ:")
         for c in conflicts:
             lines.append(f"  — {c}")
+        for w in sem_warnings:
+            lines.append(f"  — {w}")
 
     lines.append(plan_30)
     lines.append(f"\n📊 ВПЕВНЕНІСТЬ АГЕНТА: {conf_pct}%")

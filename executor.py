@@ -449,6 +449,43 @@ def process_recommendation(rec, client, wp, telegram_token, chat_id):
         process_create_new(rec, client, wp, telegram_token, chat_id)
 
 
+def _send_status(telegram_token: str, chat_id: str, backlog: list[dict], learning_log: list[dict]) -> None:
+    """Відповідає на /status — короткий дайджест стану бэклогу і learning_log."""
+    from collections import Counter
+    statuses = Counter(r.get("status", "pending") for r in backlog)
+    pending = statuses.get("pending", 0)
+    in_progress = statuses.get("in_progress", 0)
+    published = statuses.get("published", 0)
+    done = statuses.get("done", 0)
+    rejected = statuses.get("rejected", 0)
+    reverted = statuses.get("reverted", 0)
+
+    log_total = len(learning_log)
+    log_worked = sum(1 for e in learning_log if e.get("worked"))
+    log_pct = round(log_worked / log_total * 100) if log_total else 0
+
+    pending_items = [r for r in backlog if r.get("status") == "pending"]
+    top3 = pending_items[:3]
+    top3_lines = "\n".join(
+        f"  #{r['id']} [{r.get('action','?')}] {r['title'][:55]}"
+        for r in top3
+    )
+
+    msg = (
+        f"📊 Статус SEO-агента:\n\n"
+        f"Бэклог:\n"
+        f"  ⏳ Очікують: {pending}\n"
+        f"  🔄 В роботі: {in_progress}\n"
+        f"  ✅ Опубліковано: {published + done}\n"
+        f"  ↩️ Відкочено: {reverted}\n"
+        f"  ❌ Відхилено: {rejected}\n\n"
+        f"Learning log: {log_total} записів, {log_worked} успішних ({log_pct}%)\n\n"
+        f"Топ-3 очікують виконання:\n{top3_lines or '  (порожньо)'}\n\n"
+        f"Команди: /do <id> | /reject <id> | /published <id> | /revert <id>"
+    )
+    send_message(telegram_token, chat_id, msg)
+
+
 def main():
     telegram_token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
@@ -495,7 +532,9 @@ def main():
         m_pub = re.match(r"/published\s+(\d+)", text)
         m_rej = re.match(r"/reject\s+(\d+)", text)
         m_rev = re.match(r"/revert\s+(\d+)", text)
-        if m_do:
+        if text.strip() == "/status":
+            _send_status(telegram_token, chat_id, backlog, load_json("learning_log.json", default=[]))
+        elif m_do:
             requested_do.append(int(m_do.group(1)))
         elif m_pub:
             requested_published.append(int(m_pub.group(1)))

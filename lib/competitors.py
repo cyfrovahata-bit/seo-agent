@@ -1,13 +1,39 @@
 """
 Моніторинг конкурентів — аналіз контенту конкурентних сайтів через їх sitemap
 і реальний fetch сторінок (H1, H2, meta description, текст).
-Запускається раз на тиждень.
+Запускається раз на тиждень. Зберігає snapshots в data/competitors_history.json.
 """
+
+import datetime
+import json
+import os
 
 import requests
 from collections import Counter
 from xml.etree import ElementTree
 from bs4 import BeautifulSoup
+
+COMPETITORS_HISTORY_FILE = "data/competitors_history.json"
+
+
+def _load_history() -> dict:
+    try:
+        with open(COMPETITORS_HISTORY_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_history(history: dict) -> None:
+    os.makedirs("data", exist_ok=True)
+    with open(COMPETITORS_HISTORY_FILE, "w") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
+def _detect_new_pages(domain: str, current_urls: list[str], history: dict) -> list[str]:
+    """Порівнює поточні URL з минулим snapshot. Повертає нові URL."""
+    prev_urls = set(history.get(domain, {}).get("urls", []))
+    return [u for u in current_urls if u not in prev_urls]
 
 
 COMPETITOR_DOMAINS = [
@@ -100,15 +126,20 @@ def analyze_competitors(our_pages: list[str]) -> dict:
     """
     1. Порівнює теми сторінок конкурентів з нашими (через sitemap)
     2. Для топ-5 сервісних сторінок кожного конкурента — завантажує реальний контент
+    3. Зберігає weekly snapshot у data/competitors_history.json і визначає нові сторінки
     """
     our_slugs = set()
     for p in our_pages:
         slug = p.strip("/").split("/")[-1].replace("-", " ").lower()
         our_slugs.add(slug)
 
+    history = _load_history()
+    today_iso = datetime.date.today().isoformat()
+
     results = []
     all_competitor_topics = []
     deep_content = []  # реальний контент сторінок
+    new_competitor_pages: dict[str, list[str]] = {}
 
     for domain in COMPETITOR_DOMAINS:
         urls = _fetch_sitemap_urls(domain)
@@ -118,6 +149,18 @@ def analyze_competitors(our_pages: list[str]) -> dict:
         service_urls = [u for u in urls if not any(
             seg in u for seg in ["/blog/", "/statti/", "/news/", "/uk/", "/post/", "?", "#"]
         ) and u.rstrip("/") != domain.rstrip("/")]
+
+        # Нові сторінки відносно минулого snapshot
+        new_pages = _detect_new_pages(domain, urls, history)
+        if new_pages:
+            new_competitor_pages[domain] = new_pages[:10]
+
+        # Оновлюємо snapshot
+        history[domain] = {
+            "last_checked": today_iso,
+            "total_pages": len(urls),
+            "urls": urls,
+        }
 
         # Завантажуємо контент топ-3 сервісних сторінок і топ-2 статей
         pages_to_fetch = service_urls[:3] + blog_urls[:2]
@@ -138,12 +181,15 @@ def analyze_competitors(our_pages: list[str]) -> dict:
             "total_pages": len(urls),
             "blog_posts": len(blog_urls),
             "service_pages": len(service_urls),
+            "new_pages_this_week": len(new_pages),
             "sample_topics": [_extract_slug_keywords(u) for u in (blog_urls + service_urls)[:20]],
         })
 
         for u in blog_urls[:50]:
             slug = u.strip("/").split("/")[-1].replace("-", " ").lower()
             all_competitor_topics.append({"domain": domain, "slug": slug, "url": u})
+
+    _save_history(history)
 
     slug_count: Counter = Counter()
     slug_to_url: dict = {}
@@ -161,4 +207,5 @@ def analyze_competitors(our_pages: list[str]) -> dict:
         "competitors": results,
         "content_gaps": gaps[:10],
         "deep_content": deep_content,  # реальний контент для аналізу Claude
+        "new_competitor_pages": new_competitor_pages,  # нові сторінки конкурентів цього тижня
     }
