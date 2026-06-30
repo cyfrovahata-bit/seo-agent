@@ -97,5 +97,73 @@
         "avg_duration_sec": 0.0
       }
     ]
+  },
+  {
+    "date": "2026-06-22",
+    "mode": "weekly",
+    "site_totals": {
+      "clicks": 0,
+      "impressions": 21,
+      "sessions": 30,
+      "users": 25
+    },
+    "top_queries": [
+      {
+        "query": "витрати на просування сайту",
+        "page": "https://cyfrovahata.com.ua/seo-prosuvannya-saitiv/",
+        "clicks": 0,
+        "impressions": 3,
+        "ctr": 0,
+        "position": 87.7
+      },
+      {
+        "query": "просування сайту в гугл ціна",
+        "page": "https://cyfrovahata.com.ua/seo-prosuvannya-saitiv/",
+        "clicks": 0,
+        "impressions": 12,
+        "ctr": 0,
+        "position": 98.3
+      },
+      {
+        "query": "просування сайту ужгород",
+        "page": "https://cyfrovahata.com.ua/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 11
+      },
+      {
+        "query": "просування сайтів ужгород",
+        "page": "https://cyfrovahata.com.ua/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 3
+      },
+      {
+        "query": "розробка сайту",
+        "page": "https://cyfrovahata.com.ua/",
+        "clicks": 0,
+        "impressions": 3,
+        "ctr": 0,
+        "position": 31
+      }
+    ],
+    "top_pages": [
+      {
+        "page": "/",
+        "sessions": 28,
+        "users": 24,
+        "bounce_rate": 75.0,
+        "avg_duration_sec": 23.6
+      },
+      {
+        "page": "/seo-prosuvannya-saitiv/",
+        "sessions": 2,
+        "users": 1,
+        "bounce_rate": 50.0,
+        "avg_duration_sec": 2.6
+      }
+    ]
   }
 ]
