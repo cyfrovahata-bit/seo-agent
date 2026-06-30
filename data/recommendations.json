@@ -18,9 +18,18 @@
     "action": "create_new",
     "target_page_path": null,
     "id": 8,
-    "status": "draft_ready",
+    "status": "published",
     "created": "2026-06-29",
-    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1847&action=edit"
+    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1847&action=edit",
+    "auto_published": true,
+    "published_date": "2026-06-30",
+    "impact_checked": false,
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Зареєструвати компанію в Google Business Profile",
@@ -30,8 +39,16 @@
     "action": "create_new",
     "target_page_path": null,
     "id": 4,
-    "status": "pending",
-    "created": "2026-06-22"
+    "status": "published",
+    "created": "2026-06-22",
+    "published_date": "2026-06-30",
+    "impact_checked": false,
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Розмістити посилання на сайт у каталозі Clutch.co",
