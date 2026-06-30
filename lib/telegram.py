@@ -26,28 +26,32 @@ def send_message(token: str, chat_id: str, text: str) -> None:
 
 
 def send_recommendations_buttons(token: str, chat_id: str, pending: list[dict]) -> None:
-    """Відправляє список рекомендацій з inline-кнопками Виконати/Відхилити."""
+    """Відправляє кожну рекомендацію окремим повідомленням з кнопками."""
     if not pending:
         return
-    text = "📋 Рекомендації — оберіть дію:"
-    buttons = []
     for r in pending:
-        label = f"#{r['id']} [{r['priority']}] {r['title'][:40]}"
-        buttons.append([
-            {"text": f"▶️ #{r['id']} Виконати", "callback_data": f"do_{r['id']}"},
+        priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(r.get("priority", ""), "⚪")
+        text = (
+            f"📋 Рекомендація #{r['id']} {priority_emoji}\n\n"
+            f"<b>{r['title']}</b>\n\n"
+            f"{r.get('description', '')}"
+        )
+        buttons = [[
+            {"text": f"▶️ Виконати", "callback_data": f"do_{r['id']}"},
             {"text": f"❌ Відхилити", "callback_data": f"reject_{r['id']}"},
-        ])
-    resp = requests.post(
-        API_BASE.format(token=token, method="sendMessage"),
-        json={
-            "chat_id": chat_id,
-            "text": text,
-            "reply_markup": {"inline_keyboard": buttons},
-        },
-        timeout=30,
-    )
-    if not resp.ok:
-        print(f"Telegram buttons error {resp.status_code}: {resp.text}")
+        ]]
+        resp = requests.post(
+            API_BASE.format(token=token, method="sendMessage"),
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "reply_markup": {"inline_keyboard": buttons},
+            },
+            timeout=30,
+        )
+        if not resp.ok:
+            print(f"Telegram buttons error {resp.status_code}: {resp.text}")
 
 
 def answer_callback_query(token: str, callback_query_id: str, text: str = "") -> None:
