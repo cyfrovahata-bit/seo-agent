@@ -18,8 +18,9 @@
     "action": "create_new",
     "target_page_path": null,
     "id": 8,
-    "status": "pending",
-    "created": "2026-06-29"
+    "status": "draft_ready",
+    "created": "2026-06-29",
+    "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1847&action=edit"
   },
   {
     "title": "Зареєструвати компанію в Google Business Profile",
