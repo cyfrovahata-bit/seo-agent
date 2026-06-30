@@ -191,10 +191,10 @@ class WordPressClient:
                 "edit_link": f"{self.base_url}/wp-admin/post.php?post={post_id}&action=edit",
             }
         except Exception:
-            # Fallback: створити чернетку якщо autosave недоступний
+            # Fallback: створити чернетку як posts (Editor має права на posts, але не на pages)
             item = self._get(f"{post_type}/{post_id}")
             title = item.get("title", {}).get("rendered", "Без назви")
-            result = self._post(post_type, {"title": f"[ПРАВКА] {title}", "content": content, "status": "draft"})
+            result = self._post("posts", {"title": f"[ПРАВКА] {title}", "content": content, "status": "draft"})
             return {
                 "id": result["id"],
                 "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
