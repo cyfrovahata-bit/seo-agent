@@ -545,7 +545,9 @@ def _format_funnel_block(funnel_pages: list[dict]) -> str:
     if not funnel_pages:
         return ""
     lines = ["\n📊 SEO ВОРОНКА ПО СТОРІНКАХ:"]
-    for f in funnel_pages[:10]:
+    shown = funnel_pages[:7]
+    remaining = funnel_pages[7:]
+    for f in shown:
         page = f["page"]
         cr_str = f"{f['conversion_rate']:.1f}%" if f["sessions"] > 0 else "—"
         ctr_str = f"{f['ctr']:.1f}%" if f["impressions"] > 0 else "—"
@@ -558,6 +560,10 @@ def _format_funnel_block(funnel_pages: list[dict]) -> str:
         for c in f.get("causes", [])[:2]:
             lines.append(f"    ⚡ [{_conf_bar(c.confidence)}] {c.description}")
             lines.append(f"       → {c.recommendation}")
+    if remaining:
+        rest_sessions = sum(f["sessions"] for f in remaining)
+        rest_conv = sum(f["total_conversions"] for f in remaining)
+        lines.append(f"\n  + ще {len(remaining)} сторінок: {rest_sessions} сесій, {rest_conv} конверсій загалом")
     return "\n".join(lines)
 
 
