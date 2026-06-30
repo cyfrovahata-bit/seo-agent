@@ -36,10 +36,13 @@ def send_recommendations_buttons(token: str, chat_id: str, pending: list[dict]) 
             f"<b>{r['title']}</b>\n\n"
             f"{r.get('description', '')}"
         )
-        buttons = [[
-            {"text": f"▶️ Виконати", "callback_data": f"do_{r['id']}"},
-            {"text": f"❌ Відхилити", "callback_data": f"reject_{r['id']}"},
-        ]]
+        buttons = [
+            [{"text": "▶️ Виконати", "callback_data": f"do_{r['id']}"}],
+            [
+                {"text": "✅ Зроблено вручну", "callback_data": f"done_{r['id']}"},
+                {"text": "❌ Відхилити", "callback_data": f"reject_{r['id']}"},
+            ],
+        ]
         resp = requests.post(
             API_BASE.format(token=token, method="sendMessage"),
             json={
