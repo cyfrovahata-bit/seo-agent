@@ -283,7 +283,9 @@ def main():
             competitor_data = {"error": str(e)}
         try:
             pagespeed_key = os.environ.get("PAGESPEED_API_KEY")
-            technical_data = run_technical_audit(wp, os.environ["WP_BASE_URL"], pagespeed_key)
+            # Топ-сторінки за сесіями для перевірки PageSpeed
+            top_page_paths = [r["page"] for r in sorted(ga4_data, key=lambda x: -x.get("sessions", 0))[:5]]
+            technical_data = run_technical_audit(wp, os.environ["WP_BASE_URL"], pagespeed_key, top_pages=top_page_paths)
         except Exception as e:
             technical_data = {"error": str(e)}
         completed_backlinks = load_json("backlinks_done.json", default=[])
@@ -398,6 +400,19 @@ def main():
             "Прогалини в контенті: " + str(competitor_data.get("content_gaps", [])) + "\n"
             "Реальний контент конкурентів (H1/H2/meta):" + "".join(deep_lines)
         )
+        # Алерт про нові сторінки конкурентів
+        new_pages = competitor_data.get("new_competitor_pages", {})
+        if new_pages:
+            alert_lines = ["🕵️ Конкуренти опублікували нові сторінки цього тижня:"]
+            for domain, urls in new_pages.items():
+                alert_lines.append(f"\n  {domain}:")
+                for u in urls[:5]:
+                    alert_lines.append(f"    • {u}")
+            send_message(
+                os.environ["TELEGRAM_BOT_TOKEN"],
+                os.environ["TELEGRAM_CHAT_ID"],
+                "\n".join(alert_lines),
+            )
 
     backlink_section = ""
     if backlink_data and backlink_data["total_remaining"] > 0:
@@ -510,10 +525,15 @@ def main():
         rec["created"] = today.isoformat()
         backlog.append(rec)
         next_id += 1
-    # Архівуємо старі виконані/відхилені рекомендації (тримаємо не більше 200)
-    active = [r for r in backlog if r.get("status") in ("pending", "draft_ready", "revision_ready")]
-    closed = [r for r in backlog if r.get("status") not in ("pending", "draft_ready", "revision_ready")]
-    save_json("recommendations.json", active + closed[-150:])
+    # Обрізаємо бэклог: активні зберігаємо всі, завершені — тільки останні 30
+    active_statuses = {"pending", "draft_ready", "revision_ready", "in_progress", "awaiting_manual"}
+    active = [r for r in backlog if r.get("status") in active_statuses]
+    closed = sorted(
+        [r for r in backlog if r.get("status") not in active_statuses],
+        key=lambda r: r.get("published_date") or r.get("created") or "",
+        reverse=True,
+    )
+    save_json("recommendations.json", active + closed[:30])
 
     history.append({
         "date": today.isoformat(),

@@ -25,7 +25,7 @@ from bs4 import BeautifulSoup
 from lib.google_seo import get_search_console_data, get_ga4_data
 from lib.metrics import find_page_metrics, IMPACT_REVIEW_DAYS
 from lib.state import load_json, save_json
-from lib.telegram import get_updates, send_message, answer_callback_query
+from lib.telegram import get_updates, send_message, send_message_with_buttons, answer_callback_query
 from lib.wordpress import WordPressClient
 
 MODEL = "claude-sonnet-4-6"
@@ -385,23 +385,36 @@ def process_create_new(rec, client, wp, telegram_token, chat_id):
             new_title = item["new"]
             break
 
-    post = wp.create_draft(new_title, new_markup, "posts", status="publish")
+    # Зберігаємо як чернетку — відправляємо preview для підтвердження
+    post = wp.create_draft(new_title, new_markup, "posts", status="draft")
 
-    # Фіксуємо baseline відразу (нова сторінка — поки 0, через 14 днів порівняємо з реальними даними)
-    rec["status"] = "published"
-    rec["auto_published"] = True
+    rec["status"] = "draft_ready"
+    rec["wp_post_id"] = post["id"]
     rec["edit_link"] = post["edit_link"]
-    rec["published_date"] = datetime.date.today().isoformat()
-    rec["baseline_metrics"] = {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
-    rec["impact_checked"] = False
+    rec["draft_title"] = new_title
 
-    public_url = post.get("public_url") or post["edit_link"]
-    send_message(telegram_token, chat_id,
-                 f"🚀 Статтю #{rec['id']} автоматично опубліковано!\n\n"
-                 f"<b>{new_title}</b>\n"
-                 f"🔗 {public_url}\n\n"
-                 f"Переглянути/відредагувати: {post['edit_link']}\n"
-                 f"Щоб відкатити — надішли /revert {rec['id']}")
+    # Перший абзац для preview
+    from bs4 import BeautifulSoup as _BS
+    _soup = _BS(new_markup, "html.parser")
+    preview_text = ""
+    for _p in _soup.find_all("p"):
+        _t = _p.get_text(strip=True)
+        if len(_t) > 60:
+            preview_text = _t[:300]
+            break
+
+    from lib.telegram import send_message_with_buttons
+    send_message_with_buttons(
+        telegram_token, chat_id,
+        f"📝 Стаття #{rec['id']} готова до публікації:\n\n"
+        f"<b>{new_title}</b>\n\n"
+        f"{preview_text}\n\n"
+        f"Переглянути у WP: {post['edit_link']}",
+        buttons=[
+            [{"text": "🚀 Опублікувати", "callback_data": f"publish_{rec['id']}"},
+             {"text": "✏️ Редагувати", "callback_data": f"noop_{rec['id']}"}],
+        ],
+    )
 
 
 def capture_baseline(rec: dict) -> dict | None:
@@ -447,6 +460,36 @@ def process_recommendation(rec, client, wp, telegram_token, chat_id):
         process_edit_existing(rec, client, wp, telegram_token, chat_id)
     else:
         process_create_new(rec, client, wp, telegram_token, chat_id)
+
+
+def _publish_draft(rec_id: int, by_id: dict, telegram_token: str, chat_id: str) -> None:
+    """Публікує чернетку яку створив process_create_new після підтвердження користувачем."""
+    rec = by_id.get(rec_id)
+    if not rec:
+        send_message(telegram_token, chat_id, f"⚠️ #{rec_id} не знайдено.")
+        return
+    if rec.get("status") != "draft_ready" or not rec.get("wp_post_id"):
+        send_message(telegram_token, chat_id, f"ℹ️ #{rec_id} не є чернеткою для публікації (статус: {rec.get('status')}).")
+        return
+    wp = WordPressClient(
+        os.environ["WP_BASE_URL"], os.environ["WP_USERNAME"], os.environ["WP_APP_PASSWORD"],
+    )
+    try:
+        result = wp._post(f"posts/{rec['wp_post_id']}", {"status": "publish"})
+        slug = result.get("slug", "")
+        public_url = f"{wp.base_url}/{slug}/" if slug else rec["edit_link"]
+        rec["status"] = "published"
+        rec["auto_published"] = True
+        rec["published_date"] = datetime.date.today().isoformat()
+        rec["baseline_metrics"] = {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+        rec["impact_checked"] = False
+        send_message(telegram_token, chat_id,
+                     f"🚀 Статтю #{rec_id} опубліковано!\n\n"
+                     f"<b>{rec.get('draft_title', rec['title'])}</b>\n"
+                     f"🔗 {public_url}\n\n"
+                     f"Щоб відкатити — надішли /revert {rec_id}")
+    except Exception as e:
+        send_message(telegram_token, chat_id, f"⚠️ Не вдалось опублікувати #{rec_id}: {e}")
 
 
 def _send_status(telegram_token: str, chat_id: str, backlog: list[dict], learning_log: list[dict]) -> None:
@@ -496,7 +539,7 @@ def main():
     backlog = load_json("recommendations.json", default=[])
     by_id = {r["id"]: r for r in backlog}
 
-    requested_do, requested_published, requested_reject, requested_done, requested_revert = [], [], [], [], []
+    requested_do, requested_published, requested_reject, requested_done, requested_revert, requested_publish_draft = [], [], [], [], [], []
     callbacks_to_answer = []  # (callback_query_id, chat_id, message_id, text)
 
     for update in updates:
@@ -512,7 +555,12 @@ def main():
             m_do = re.match(r"do_(\d+)", data)
             m_done = re.match(r"done_(\d+)", data)
             m_rej = re.match(r"reject_(\d+)", data)
-            if m_do:
+            m_pub_draft = re.match(r"publish_(\d+)", data)
+            if m_pub_draft:
+                rec_id = int(m_pub_draft.group(1))
+                requested_publish_draft.append(rec_id)
+                callbacks_to_answer.append((cq_id, cq_chat, cq_msg_id, f"🚀 Публікую #{rec_id}..."))
+            elif m_do:
                 rec_id = int(m_do.group(1))
                 requested_do.append(rec_id)
                 callbacks_to_answer.append((cq_id, cq_chat, cq_msg_id, f"▶️ Виконую #{rec_id}..."))
@@ -625,8 +673,75 @@ def main():
                              f"⚠️ Не вдалось відкатити #{rec_id} через API — "
                              f"поверніть вручну: {rec.get('edit_link', '')}")
 
-    if requested_do or requested_published or requested_reject or requested_done or requested_revert:
+    for rec_id in requested_publish_draft:
+        _publish_draft(rec_id, by_id, telegram_token, chat_id)
+
+    if requested_do or requested_published or requested_reject or requested_done or requested_revert or requested_publish_draft:
         save_json("recommendations.json", list(by_id.values()))
+
+    # Автоматичний impact review: шукаємо published без перевірки ефекту (14+ днів)
+    _auto_impact_review(backlog, telegram_token, chat_id)
+
+
+def _auto_impact_review(backlog: list[dict], telegram_token: str, chat_id: str) -> None:
+    """Надсилає нагадування в Telegram для published рекомендацій що чекають impact review."""
+    today = datetime.date.today()
+    from lib.metrics import IMPACT_REVIEW_DAYS
+    due = []
+    for rec in backlog:
+        if rec.get("status") != "published":
+            continue
+        if rec.get("impact_checked"):
+            continue
+        pub_date = rec.get("published_date")
+        if not pub_date:
+            continue
+        try:
+            days_passed = (today - datetime.date.fromisoformat(pub_date)).days
+        except Exception:
+            continue
+        if days_passed >= IMPACT_REVIEW_DAYS:
+            due.append((rec, days_passed))
+
+    if not due:
+        return
+
+    # Отримуємо GSC/GA4 для порівняння
+    try:
+        end = today
+        start = end - datetime.timedelta(days=7)
+        gsc_now = get_search_console_data(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GSC_SITE_URL"],
+            start.isoformat(), end.isoformat(),
+        )
+        ga4_now = get_ga4_data(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
+            start.isoformat(), end.isoformat(),
+        )
+    except Exception as e:
+        print(f"Impact review fetch error: {e}")
+        return
+
+    for rec, days_passed in due[:3]:  # не більше 3 за раз
+        baseline = rec.get("baseline_metrics") or {}
+        page = rec.get("target_page_path")
+        current = find_page_metrics(page, gsc_now, ga4_now) if page else {}
+
+        lines = [f"📊 Impact review #{rec['id']} «{rec['title']}» ({days_passed} днів):"]
+        if baseline and current:
+            for key, label in [("clicks", "кліки"), ("impressions", "покази"), ("sessions", "сесії")]:
+                b = baseline.get(key, 0) or 0
+                c = current.get(key, 0) or 0
+                if b == 0 and c == 0:
+                    continue
+                diff = c - b
+                pct = f" ({diff:+d}, {diff/b*100:+.0f}%)" if b > 0 else f" (було 0 → {c})"
+                lines.append(f"  {label}: {b} → {c}{pct}")
+        else:
+            lines.append("  (немає даних для порівняння)")
+
+        lines.append(f"\nЯкщо результат задовільний — натисни /done_{rec['id']}")
+        send_message(telegram_token, chat_id, "\n".join(lines))
 
 
 if __name__ == "__main__":

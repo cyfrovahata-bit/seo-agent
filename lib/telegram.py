@@ -57,6 +57,22 @@ def send_recommendations_buttons(token: str, chat_id: str, pending: list[dict]) 
             print(f"Telegram buttons error {resp.status_code}: {resp.text}")
 
 
+def send_message_with_buttons(token: str, chat_id: str, text: str, buttons: list[list[dict]]) -> None:
+    """Відправляє повідомлення з inline-кнопками."""
+    resp = requests.post(
+        API_BASE.format(token=token, method="sendMessage"),
+        json={
+            "chat_id": chat_id,
+            "text": text[:MAX_MESSAGE_LEN],
+            "parse_mode": "HTML",
+            "reply_markup": {"inline_keyboard": buttons},
+        },
+        timeout=30,
+    )
+    if not resp.ok:
+        print(f"Telegram send_with_buttons error {resp.status_code}: {resp.text}")
+
+
 def answer_callback_query(token: str, callback_query_id: str, text: str = "") -> None:
     """Підтверджує натискання inline-кнопки (прибирає "годинник" на кнопці)."""
     requests.post(

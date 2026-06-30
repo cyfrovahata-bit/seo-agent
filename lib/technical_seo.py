@@ -107,30 +107,51 @@ def check_robots_and_sitemap(base_url: str) -> dict:
     return result
 
 
-def run_technical_audit(wp_client, base_url: str, pagespeed_api_key: str | None) -> dict:
+def _cached_pagespeed(url: str, api_key: str, cache: dict) -> dict:
+    """Повертає PageSpeed з кешу або робить API-запит і кешує результат."""
+    cache_key = url.rstrip("/")
+    cached_entry = cache.get(cache_key, {})
+    cached_date = cached_entry.get("cached_date", "")
+    try:
+        age = (datetime.date.today() - datetime.date.fromisoformat(cached_date)).days if cached_date else 999
+    except Exception:
+        age = 999
+    if age < PAGESPEED_CACHE_TTL_DAYS:
+        return cached_entry.get("data", {})
+    try:
+        data = check_pagespeed(url, api_key)
+        cache[cache_key] = {"cached_date": datetime.date.today().isoformat(), "data": data}
+        return data
+    except Exception as e:
+        return cached_entry.get("data") or {"error": str(e), "url": url}
+
+
+def run_technical_audit(wp_client, base_url: str, pagespeed_api_key: str | None,
+                        top_pages: list[str] | None = None) -> dict:
+    """
+    top_pages: список шляхів (напр. ['/rozrobka-saitu/', '/seo/']) — для них теж перевіряємо PageSpeed.
+    """
     pages = wp_client.list_content("pages") + wp_client.list_content("posts")
     page_results = [check_page_seo(p["link"]) for p in pages[:MAX_PAGES_TO_CHECK]]
 
     pagespeed = None
+    pagespeed_top = []
     if pagespeed_api_key:
         cache = _load_pagespeed_cache()
-        cache_key = base_url.rstrip("/")
-        cached_entry = cache.get(cache_key, {})
-        cached_date = cached_entry.get("cached_date", "")
-        cache_age_days = (datetime.date.today() - datetime.date.fromisoformat(cached_date)).days if cached_date else 999
-        if cache_age_days < PAGESPEED_CACHE_TTL_DAYS:
-            pagespeed = cached_entry.get("data")
-        else:
-            try:
-                pagespeed = check_pagespeed(base_url, pagespeed_api_key)
-                cache[cache_key] = {"cached_date": datetime.date.today().isoformat(), "data": pagespeed}
-                _save_pagespeed_cache(cache)
-            except Exception as e:
-                pagespeed = cached_entry.get("data") or {"error": str(e)}
+        pagespeed = _cached_pagespeed(base_url, pagespeed_api_key, cache)
+        # Перевіряємо топ-5 сервісних сторінок
+        if top_pages:
+            for path in top_pages[:5]:
+                url = base_url.rstrip("/") + path
+                result = _cached_pagespeed(url, pagespeed_api_key, cache)
+                if result and "error" not in result:
+                    pagespeed_top.append(result)
+        _save_pagespeed_cache(cache)
 
     return {
         "robots_and_sitemap": check_robots_and_sitemap(base_url),
         "pagespeed_homepage": pagespeed,
+        "pagespeed_top_pages": pagespeed_top,
         "pages_with_issues": [p for p in page_results if p.get("issues")],
         "pages_checked_total": len(page_results),
     }

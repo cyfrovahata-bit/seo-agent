@@ -7,6 +7,7 @@ Viewer у GA4 Property Access Management). Запис у Google-сервіси
 """
 
 import json
+import time
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -20,6 +21,26 @@ SCOPES = [
     "https://www.googleapis.com/auth/webmasters.readonly",
     "https://www.googleapis.com/auth/analytics.readonly",
 ]
+
+_RETRY_DELAYS = [5, 15, 45]  # секунди між повторними спробами
+
+
+def _with_retry(fn, label: str = ""):
+    """Виконує fn(), повторює до 3 разів при мережевих/тимчасових помилках."""
+    last_exc = None
+    for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+        if delay:
+            print(f"{label} retry {attempt}/{len(_RETRY_DELAYS)}, чекаємо {delay}s...")
+            time.sleep(delay)
+        try:
+            return fn()
+        except Exception as e:
+            last_exc = e
+            err_str = str(e).lower()
+            # Не повторюємо при помилках авторизації або невалідних запитах
+            if any(code in err_str for code in ("403", "401", "invalid", "permission")):
+                raise
+    raise last_exc
 
 
 def _credentials(service_account_json: str):
@@ -39,9 +60,12 @@ def get_search_console_data(service_account_json: str, site_url: str,
         "rowLimit": row_limit,
     }
     try:
-        response = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
+        response = _with_retry(
+            lambda: service.searchanalytics().query(siteUrl=site_url, body=body).execute(),
+            label="GSC",
+        )
     except Exception as e:
-        print(f"Search Console API error: {e}")
+        print(f"Search Console API error (всі спроби вичерпано): {e}")
         return []
     rows = response.get("rows", [])
     return [
@@ -72,7 +96,11 @@ def get_ga4_events(service_account_json: str, property_id: str,
         metrics=[Metric(name="eventCount")],
         limit=50,
     )
-    response = client.run_report(request)
+    try:
+        response = _with_retry(lambda: client.run_report(request), label="GA4 events")
+    except Exception as e:
+        print(f"GA4 events error (всі спроби вичерпано): {e}")
+        return []
     return [
         {"name": row.dimension_values[0].value, "count": int(row.metric_values[0].value)}
         for row in response.rows
@@ -95,9 +123,9 @@ def get_ga4_data(service_account_json: str, property_id: str,
         limit=100,
     )
     try:
-        response = client.run_report(request)
+        response = _with_retry(lambda: client.run_report(request), label="GA4 pages")
     except Exception as e:
-        print(f"GA4 API error: {e}")
+        print(f"GA4 API error (всі спроби вичерпано): {e}")
         return []
     result = []
     for row in response.rows:
@@ -134,9 +162,9 @@ def get_ga4_page_conversions(service_account_json: str, property_id: str,
         limit=500,
     )
     try:
-        response = client.run_report(request)
+        response = _with_retry(lambda: client.run_report(request), label="GA4 conversions")
     except Exception as e:
-        print(f"GA4 page conversions error: {e}")
+        print(f"GA4 page conversions error (всі спроби вичерпано): {e}")
         return {}
     result: dict = {}
     for row in response.rows:
@@ -165,9 +193,9 @@ def get_ga4_traffic_channels(service_account_json: str, property_id: str,
         limit=20,
     )
     try:
-        response = client.run_report(request)
+        response = _with_retry(lambda: client.run_report(request), label="GA4 channels")
     except Exception as e:
-        print(f"GA4 traffic channels error: {e}")
+        print(f"GA4 traffic channels error (всі спроби вичерпано): {e}")
         return {}
     result: dict = {}
     for row in response.rows:
