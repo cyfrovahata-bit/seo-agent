@@ -322,49 +322,54 @@ def main():
         else "Це ЩОТИЖНЕВИЙ звіт — детальніший аналіз тренду, рекомендації якщо є підстави."
     )
 
-    user_message = f"""
-{report_type_hint}
-Режим: {period_label} | Період: {start_date} – {end_date}
+    revert_section = ""
+    if revert_candidates:
+        revert_section = (
+            "\n⚠️ МОЖЛИВИЙ ВІДКАТ ЗМІН (кліки впали більш ніж на 30% після правки):\n"
+            + str(revert_candidates)
+            + "\nЯкщо це підтверджується — запропонуй рекомендацію з action=edit_existing щоб повернути оригінал."
+        )
 
-{comparison_text}
+    technical_section = ""
+    if technical_data:
+        technical_section = "\nТЕХНІЧНИЙ АУДИТ САЙТУ:\n" + str(technical_data)
 
-ДОВГОСТРОКОВИЙ ТРЕНД ({period_label}):
-{trend_table}
+    competitor_section = ""
+    if competitor_data:
+        domains = [c["domain"] + " (" + str(c["total_pages"]) + " стор.)" for c in competitor_data.get("competitors", [])]
+        competitor_section = (
+            "\nАНАЛІЗ КОНКУРЕНТІВ (теми яких нема у нас, але є у 2+ конкурентів):\n"
+            "Конкуренти: " + str(domains) + "\n"
+            "Прогалини в контенті: " + str(competitor_data.get("content_gaps", []))
+        )
 
-ДАНІ ПОШУКУ — Search Console (запит, сторінка, кліки, покази, CTR, позиція):
-{gsc_data}
+    backlink_section = ""
+    if backlink_data and backlink_data["total_remaining"] > 0:
+        backlink_section = (
+            "\nМОЖЛИВОСТІ ДЛЯ ЗОВНІШНІХ ПОСИЛАНЬ"
+            " (зроблено " + str(backlink_data["total_done"])
+            + ", залишилось " + str(backlink_data["total_remaining"]) + "):\n"
+            + str(backlink_data["opportunities"][:3])
+            + "\nЗапропонуй 1-2 конкретні майданчики з інструкцією як розмістити посилання."
+        )
 
-ДАНІ ВІДВІДУВАНОСТІ — Google Analytics (сторінка, сесії, користувачі, відмови, тривалість):
-{ga4_data}
-
-{snapshots_text}
-
-{frozen_text}
-
-ВІДКРИТИЙ БЭКЛОГ (вже запропоновані, ще НЕ виконані рекомендації — не дублюй):
-{open_backlog if open_backlog else "Порожньо."}
-
-ОЦІНКА ЕФЕКТУ ЗМІН (раніше застосовані правки, час підбити підсумок):
-{impact_reviews if impact_reviews else "Немає правок, готових до оцінки ефекту."}
-
-ДИНАМІКА ПОЗИЦІЙ ЗАПИТІВ (порівняно з попереднім звітом):
-{keyword_trends[:20] if keyword_trends else "Ще немає даних для порівняння."}
-
-{f"""⚠️ МОЖЛИВИЙ ВІДКАТ ЗМІН (кліки впали більш ніж на 30% після правки):
-{revert_candidates}
-Якщо це підтверджується — запропонуй рекомендацію з action=edit_existing щоб повернути оригінал.""" if revert_candidates else ""}
-
-{f"""ТЕХНІЧНИЙ АУДИТ САЙТУ:
-{technical_data}""" if technical_data else ""}
-
-{f"""АНАЛІЗ КОНКУРЕНТІВ (теми яких нема у нас, але є у 2+ конкурентів):
-Конкуренти: {[c['domain'] + ' (' + str(c['total_pages']) + ' стор.)' for c in competitor_data.get('competitors', [])]}
-Прогалини в контенті: {competitor_data.get('content_gaps', [])}""" if competitor_data else ""}
-
-{f"""МОЖЛИВОСТІ ДЛЯ ЗОВНІШНІХ ПОСИЛАНЬ (зроблено {backlink_data['total_done']}, залишилось {backlink_data['total_remaining']}):
-{backlink_data['opportunities'][:3]}
-Запропонуй 1-2 конкретні майданчики з інструкцією як розмістити посилання.""" if backlink_data and backlink_data['total_remaining'] > 0 else ""}
-"""
+    user_message = (
+        f"{report_type_hint}\n"
+        f"Режим: {period_label} | Період: {start_date} – {end_date}\n\n"
+        f"{comparison_text}\n\n"
+        f"ДОВГОСТРОКОВИЙ ТРЕНД ({period_label}):\n{trend_table}\n\n"
+        f"ДАНІ ПОШУКУ — Search Console (запит, сторінка, кліки, покази, CTR, позиція):\n{gsc_data}\n\n"
+        f"ДАНІ ВІДВІДУВАНОСТІ — Google Analytics (сторінка, сесії, користувачі, відмови, тривалість):\n{ga4_data}\n\n"
+        f"{snapshots_text}\n\n"
+        f"{frozen_text}\n\n"
+        f"ВІДКРИТИЙ БЭКЛОГ (вже запропоновані, ще НЕ виконані рекомендації — не дублюй):\n"
+        f"{open_backlog if open_backlog else 'Порожньо.'}\n\n"
+        f"ОЦІНКА ЕФЕКТУ ЗМІН (раніше застосовані правки, час підбити підсумок):\n"
+        f"{impact_reviews if impact_reviews else 'Немає правок, готових до оцінки ефекту.'}\n\n"
+        f"ДИНАМІКА ПОЗИЦІЙ ЗАПИТІВ (порівняно з попереднім звітом):\n"
+        f"{keyword_trends[:20] if keyword_trends else 'Ще немає даних для порівняння.'}"
+        f"{revert_section}{technical_section}{competitor_section}{backlink_section}"
+    )
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     response = client.messages.create(
@@ -386,7 +391,10 @@ def main():
         rec["created"] = today.isoformat()
         backlog.append(rec)
         next_id += 1
-    save_json("recommendations.json", backlog)
+    # Архівуємо старі виконані/відхилені рекомендації (тримаємо не більше 200)
+    active = [r for r in backlog if r.get("status") in ("pending", "draft_ready", "revision_ready")]
+    closed = [r for r in backlog if r.get("status") not in ("pending", "draft_ready", "revision_ready")]
+    save_json("recommendations.json", active + closed[-150:])
 
     history.append({
         "date": today.isoformat(),
