@@ -16,7 +16,8 @@ import anthropic
 
 from lib.google_seo import get_search_console_data, get_ga4_data, get_ga4_events, get_ga4_page_conversions, get_ga4_traffic_channels
 from lib.metrics import aggregate_site_totals, find_page_metrics, IMPACT_REVIEW_DAYS
-from lib.explain_why import build_explain_why, record_outcome
+from lib.explain_why import build_explain_why_full, record_outcome
+from lib.decision_engine import build_decision_plan
 from lib.state import load_json, save_json
 from lib.telegram import send_message, send_recommendations_buttons
 from lib.wordpress import WordPressClient
@@ -64,6 +65,13 @@ SYSTEM_PROMPT = """\
 - Рівень впевненості ★★★★★ = дуже ймовірно, ★★☆☆☆ = можливо але не точно
 - Якщо причина невідома — так і пиши: "точна причина невідома, але..."
 
+ПЛАН ДІЙ (обов'язково, якщо є блок "🎯 ПЛАН ДІЙ"):
+- Якщо є секція "🎯 ПЛАН ДІЙ (Decision Engine)" — обов'язково додай до звіту блок "🎯 Що робити далі:"
+- Включи лише топ-3 дії з категорій 🔥 і ⚡ — переклади людською мовою без жаргону
+- Вкажи зірки пріоритету (★★★★★), час (наприклад "15 хв роботи") і очікуваний ефект
+- Якщо є конфлікти (⚠️ КОНФЛІКТИ) — обов'язково попередь власника
+- НЕ дублюй ці ж дії в JSON-рекомендаціях якщо вони вже є в бэклозі
+
 СТИЛЬ — людська мова, не технічна:
 - Замість "CTR 2.3%" → "з кожних 100 людей які бачать сайт у пошуку, 2 заходять"
 - Замість "bounce rate 100%" → "всі хто зайшов — одразу пішли, не погортали навіть"
@@ -90,6 +98,9 @@ SYSTEM_PROMPT = """\
 
    Загалом:
    [1-2 речення загальна оцінка — добре/погано/нормально для цього віку сайту]
+
+   🎯 Що робити далі:
+   [топ-3 дії з Decision Engine: пріоритет ★, час, очікуваний ефект — якщо є]
 
 2) Рядок "---JSON---" і далі JSON-масив НОВИХ рекомендацій.
    Кожна рекомендація — окрема точкова дія (один заголовок, один блок, одна стаття).
@@ -400,7 +411,7 @@ def main():
 
     learning_log = load_json("learning_log.json", default=[])
 
-    explain_why_section = build_explain_why(
+    explain_why_section, explain_result = build_explain_why_full(
         current_totals=current_totals,
         current_gsc=gsc_data,
         current_ga4=ga4_data,
@@ -415,6 +426,13 @@ def main():
         page_conversions=page_conversions,
         traffic_channels=traffic_channels,
     )
+    decision_section = build_decision_plan(
+        explain_result=explain_result,
+        backlog=backlog,
+        learning_log=learning_log,
+        today=today,
+        mode=mode,
+    )
 
     user_message = (
         f"{report_type_hint}\n"
@@ -425,6 +443,7 @@ def main():
         f"ДАНІ ВІДВІДУВАНОСТІ — Google Analytics (сторінка, сесії, користувачі, відмови, тривалість):\n{ga4_data}\n\n"
         f"ПОДІЇ GA4 (конверсії по сайту):\n{ga4_events}\n\n"
         f"{explain_why_section}\n\n"
+        f"{decision_section}\n\n"
         f"{snapshots_text}\n\n"
         f"{frozen_text}\n\n"
         f"ВІДКРИТИЙ БЭКЛОГ (вже запропоновані, ще НЕ виконані рекомендації — не дублюй):\n"

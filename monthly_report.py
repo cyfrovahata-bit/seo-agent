@@ -24,7 +24,8 @@ from lib.technical_seo import run_technical_audit
 from lib.wordpress import WordPressClient
 from lib.state import load_json
 from lib.telegram import send_message
-from lib.explain_why import build_explain_why
+from lib.explain_why import build_explain_why_full
+from lib.decision_engine import build_decision_plan
 from lib.metrics import aggregate_site_totals
 
 MODEL = "claude-opus-4-7"
@@ -111,7 +112,9 @@ def main():
     keyword_history = load_json("keyword_history.json", default={})
     current_totals = aggregate_site_totals(gsc_data, ga4_data)
 
-    explain_why_section = build_explain_why(
+    learning_log = load_json("learning_log.json", default=[])
+
+    explain_why_section, explain_result = build_explain_why_full(
         current_totals=current_totals,
         current_gsc=gsc_data,
         current_ga4=ga4_data,
@@ -122,8 +125,16 @@ def main():
         technical_data=technical_audit,
         mode="monthly",
         today=today,
+        learning_log=learning_log,
         page_conversions=page_conversions,
         traffic_channels=traffic_channels,
+    )
+    decision_section = build_decision_plan(
+        explain_result=explain_result,
+        backlog=backlog,
+        learning_log=learning_log,
+        today=today,
+        mode="monthly",
     )
 
     user_message = f"""
@@ -140,6 +151,8 @@ def main():
 {ga4_events}
 
 {explain_why_section}
+
+{decision_section}
 
 ТЕХНІЧНИЙ SEO-АУДИТ:
 {technical_audit}

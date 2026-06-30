@@ -993,6 +993,44 @@ def record_outcome(
     return learning_log[-500:]
 
 
+def build_explain_why_full(
+    current_totals: dict,
+    current_gsc: list[dict],
+    current_ga4: list[dict],
+    history: list[dict],
+    keyword_history: dict,
+    backlog: list[dict],
+    ga4_events: list[dict],
+    technical_data: dict | None,
+    mode: str,
+    today: datetime.date,
+    learning_log: list[dict] | None = None,
+    page_conversions: dict | None = None,
+    traffic_channels: dict | None = None,
+) -> tuple[str, ExplainResult]:
+    """
+    Розширений публічний метод — повертає (рядок для Claude, ExplainResult).
+    ExplainResult передається у Decision Engine для побудови плану дій.
+    """
+    ctx = build_data_context(
+        current_totals=current_totals,
+        current_gsc=current_gsc,
+        current_ga4=current_ga4,
+        history=history,
+        keyword_history=keyword_history,
+        backlog=backlog,
+        ga4_events=ga4_events,
+        technical_data=technical_data,
+        learning_log=learning_log or [],
+        mode=mode,
+        today=today,
+        page_conversions=page_conversions,
+        traffic_channels=traffic_channels,
+    )
+    result = analyze(ctx)
+    return _format_result(result), result
+
+
 def build_explain_why(
     current_totals: dict,
     current_gsc: list[dict],
@@ -1012,7 +1050,7 @@ def build_explain_why(
     Зворотно сумісний публічний метод.
     Будує DataContext → аналізує → форматує рядок для Claude-промпту.
     """
-    ctx = build_data_context(
+    text, _ = build_explain_why_full(
         current_totals=current_totals,
         current_gsc=current_gsc,
         current_ga4=current_ga4,
@@ -1021,11 +1059,10 @@ def build_explain_why(
         backlog=backlog,
         ga4_events=ga4_events,
         technical_data=technical_data,
-        learning_log=learning_log or [],
         mode=mode,
         today=today,
+        learning_log=learning_log,
         page_conversions=page_conversions,
         traffic_channels=traffic_channels,
     )
-    result = analyze(ctx)
-    return _format_result(result)
+    return text
