@@ -4,12 +4,13 @@
 Запускається за розкладом (.github/workflows/seo-executor.yml), кожні кілька годин.
 1. Читає нові команди з Telegram: "/do <id>" — виконати рекомендацію з бэклогу.
 2. Якщо рекомендація — НОВИЙ контент (action=create_new): знаходить схожу
-   існуючу сторінку як зразок стилю і створює новий запис як DRAFT
-   (безпечно, бо живої версії ще немає).
+   існуючу сторінку як зразок стилю, генерує текст і одразу ПУБЛІКУЄ статтю
+   (безпечно — нова сторінка не може зламати існуючий контент).
+   Надсилає URL опублікованої статті і команду /revert <id> для відкату.
 3. Якщо рекомендація — правка ВЖЕ ОПУБЛІКОВАНОЇ сторінки (action=edit_existing):
-   НЕ змінює статус і НЕ чіпає живий контент, а створює autosave-ревізію,
-   яку людина сама підвантажує і підтверджує в редакторі WordPress.
-4. У будь-якому випадку — жодна зміна не йде на сайт без ручного підтвердження.
+   НЕ змінює статус і НЕ чіпає живий контент, а надсилає точну інструкцію
+   що змінити вручну в редакторі WordPress.
+4. /revert <id> — повертає автоматично опубліковану статтю в чернетку.
 """
 
 import datetime
@@ -323,8 +324,9 @@ def apply_replacements(markup: str, originals: list[str], new_texts: list[dict])
 
 
 def process_create_new(rec, client, wp, telegram_token, chat_id):
-    """Створює новий запис: копіює Gutenberg-розмітку зразка,
-    замінює тільки тексти через Claude, структуру блоків не чіпає."""
+    """Створює і одразу публікує новий запис: копіює Gutenberg-розмітку зразка,
+    замінює тільки тексти через Claude, структуру блоків не чіпає.
+    Нові статті — безризикові (живої версії ще немає), тому публікуються автоматично."""
     # Знаходимо найкращий шаблон серед опублікованих постів
     reference_id, template_type = wp.find_best_template(
         rec["title"], rec.get("description", ""), fallback_id=1751
@@ -383,14 +385,23 @@ def process_create_new(rec, client, wp, telegram_token, chat_id):
             new_title = item["new"]
             break
 
-    draft = wp.create_draft(new_title, new_markup, "posts")
+    post = wp.create_draft(new_title, new_markup, "posts", status="publish")
 
+    # Фіксуємо baseline відразу (нова сторінка — поки 0, через 14 днів порівняємо з реальними даними)
+    rec["status"] = "published"
+    rec["auto_published"] = True
+    rec["edit_link"] = post["edit_link"]
+    rec["published_date"] = datetime.date.today().isoformat()
+    rec["baseline_metrics"] = {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+    rec["impact_checked"] = False
+
+    public_url = post.get("public_url") or post["edit_link"]
     send_message(telegram_token, chat_id,
-                 f"✅ Нову чернетку за рекомендацією #{rec['id']} (\"{rec['title']}\") створено.\n"
-                 f"Перевір і опублікуй вручну: {draft['edit_link']}")
-
-    rec["status"] = "draft_ready"
-    rec["edit_link"] = draft["edit_link"]
+                 f"🚀 Статтю #{rec['id']} автоматично опубліковано!\n\n"
+                 f"<b>{new_title}</b>\n"
+                 f"🔗 {public_url}\n\n"
+                 f"Переглянути/відредагувати: {post['edit_link']}\n"
+                 f"Щоб відкатити — надішли /revert {rec['id']}")
 
 
 def capture_baseline(rec: dict) -> dict | None:
@@ -448,7 +459,7 @@ def main():
     backlog = load_json("recommendations.json", default=[])
     by_id = {r["id"]: r for r in backlog}
 
-    requested_do, requested_published, requested_reject, requested_done = [], [], [], []
+    requested_do, requested_published, requested_reject, requested_done, requested_revert = [], [], [], [], []
     callbacks_to_answer = []  # (callback_query_id, chat_id, message_id, text)
 
     for update in updates:
@@ -483,12 +494,15 @@ def main():
         m_do = re.match(r"/do\s+(\d+)", text)
         m_pub = re.match(r"/published\s+(\d+)", text)
         m_rej = re.match(r"/reject\s+(\d+)", text)
+        m_rev = re.match(r"/revert\s+(\d+)", text)
         if m_do:
             requested_do.append(int(m_do.group(1)))
         elif m_pub:
             requested_published.append(int(m_pub.group(1)))
         elif m_rej:
             requested_reject.append(int(m_rej.group(1)))
+        elif m_rev:
+            requested_revert.append(int(m_rev.group(1)))
 
     save_json("telegram_offset.json", offset_data)
 
@@ -538,7 +552,41 @@ def main():
                      f"✅ #{rec_id} «{rec['title']}» зафіксовано як виконане вручну.\n"
                      f"Через ~14 днів у звіті побачимо чи це дало результат.")
 
-    if requested_do or requested_published or requested_reject or requested_done:
+    # Відкат автоматично опублікованих статей (/revert <id>)
+    if requested_revert:
+        wp_revert = WordPressClient(
+            os.environ["WP_BASE_URL"], os.environ["WP_USERNAME"], os.environ["WP_APP_PASSWORD"],
+        )
+        for rec_id in requested_revert:
+            rec = by_id.get(rec_id)
+            if rec is None:
+                send_message(telegram_token, chat_id, f"⚠️ Рекомендацію #{rec_id} не знайдено.")
+                continue
+            if not rec.get("auto_published"):
+                send_message(telegram_token, chat_id,
+                             f"ℹ️ #{rec_id} не є автоматично опублікованою статтею — "
+                             f"відкат не підтримується через бот.")
+                continue
+            # Знаходимо пост за edit_link
+            post_id_match = re.search(r"post=(\d+)", rec.get("edit_link", ""))
+            if not post_id_match:
+                send_message(telegram_token, chat_id,
+                             f"⚠️ Не вдалось знайти ID поста для #{rec_id}.")
+                continue
+            post_id = int(post_id_match.group(1))
+            ok = wp_revert.unpublish_post(post_id)
+            if ok:
+                rec["status"] = "reverted"
+                rec["reverted_date"] = datetime.date.today().isoformat()
+                send_message(telegram_token, chat_id,
+                             f"↩️ Статтю #{rec_id} «{rec['title']}» переведено в чернетку.\n"
+                             f"Перевірити: {rec['edit_link']}")
+            else:
+                send_message(telegram_token, chat_id,
+                             f"⚠️ Не вдалось відкатити #{rec_id} через API — "
+                             f"поверніть вручну: {rec.get('edit_link', '')}")
+
+    if requested_do or requested_published or requested_reject or requested_done or requested_revert:
         save_json("recommendations.json", list(by_id.values()))
 
 

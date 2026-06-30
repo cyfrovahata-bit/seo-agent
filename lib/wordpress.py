@@ -1,8 +1,10 @@
 """
 Робота з WordPress REST API через Application Passwords.
-ВАЖЛИВО: цей модуль НІКОЛИ не публікує контент напряму — create_draft
-завжди створює запис зі статусом "draft". Публікація лишається за людиною
-у wp-admin. Це і є той самий захист "не зламати сайт".
+
+Правила публікації:
+- create_new (нова стаття) → публікується автоматично (нова сторінка не може
+  зламати існуючий контент; відкат через /revert <id>)
+- edit_existing (правка наявної сторінки) → тільки інструкція для ручного виконання
 """
 
 import requests
@@ -60,14 +62,19 @@ class WordPressClient:
             item = self._get(f"{post_type}/{post_id}")
             return item["content"]["rendered"]
 
-    def create_draft(self, title: str, content: str, post_type: str = "posts") -> dict:
+    def create_draft(self, title: str, content: str, post_type: str = "posts",
+                     status: str = "draft") -> dict:
         result = self._post(post_type, {
             "title": title,
             "content": content,
-            "status": "draft",
+            "status": status,
         })
+        slug = result.get("slug", "")
+        public_url = f"{self.base_url}/{slug}/" if slug and status == "publish" else None
         return {
             "id": result["id"],
+            "slug": slug,
+            "public_url": public_url,
             "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
         }
 
@@ -197,5 +204,19 @@ class WordPressClient:
             result = self._post("posts", {"title": f"[ПРАВКА] {title}", "content": content, "status": "draft"})
             return {
                 "id": result["id"],
-                "edit_link": f"{self.base_url}/wp-admin/post.php?post={result['id']}&action=edit",
+                "edit_link": f"{self.base_url}/wp-json/wp/v2/posts/{result['id']}",
             }
+
+    def unpublish_post(self, post_id: int) -> bool:
+        """Переводить опублікований пост у чернетку (відкат автопублікації)."""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/wp-json/wp/v2/posts/{post_id}",
+                json={"status": "draft"},
+                auth=self.auth,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return True
+        except Exception:
+            return False
