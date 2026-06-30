@@ -112,7 +112,49 @@ class WordPressClient:
             }
         return None
 
-    def find_by_slug(self, slug: str, post_type: str = "posts") -> dict | None:
+    def find_best_template(self, rec_title: str, rec_description: str, fallback_id: int = 1751) -> tuple[int, str]:
+        """
+        Знаходить найкращий пост-шаблон серед опублікованих.
+        Шукає пост з потрібними блоками (FAQ, список, стандартний).
+        Повертає (post_id, тип шаблону).
+        """
+        HAS_FAQ = "wp:yoast/faq-block"
+        HAS_LIST = "wp:list"
+
+        hint = (rec_title + " " + rec_description).lower()
+        wants_faq = any(w in hint for w in ["faq", "питань", "запитань", "відповід"])
+        wants_list = any(w in hint for w in ["список", "перелік", "кроки", "пункти", "етапи"])
+
+        try:
+            posts = self._get("posts", {"per_page": 50, "status": "publish", "context": "edit"})
+        except Exception:
+            return fallback_id, "standard"
+
+        faq_candidates = []
+        list_candidates = []
+        standard_candidates = []
+
+        for post in posts:
+            content = post.get("content", {}).get("raw", "")
+            if not content:
+                continue
+            pid = post["id"]
+            if pid == fallback_id:
+                continue
+            if HAS_FAQ in content:
+                faq_candidates.append(pid)
+            elif HAS_LIST in content and len(content) > 2000:
+                list_candidates.append(pid)
+            elif len(content) > 2000:
+                standard_candidates.append(pid)
+
+        if wants_faq and faq_candidates:
+            return faq_candidates[0], "faq"
+        if wants_list and list_candidates:
+            return list_candidates[0], "list"
+        if standard_candidates:
+            return standard_candidates[0], "standard"
+        return fallback_id, "standard"
         """Знаходить ОПУБЛІКОВАНИЙ запис за slug (останнім сегментом URL)."""
         items = self._get(post_type, {"slug": slug})
         return items[0] if items else None

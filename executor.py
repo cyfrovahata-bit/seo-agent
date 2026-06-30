@@ -279,8 +279,10 @@ def apply_replacements(markup: str, originals: list[str], new_texts: list[dict])
 def process_create_new(rec, client, wp, telegram_token, chat_id):
     """Створює новий запис: копіює Gutenberg-розмітку зразка,
     замінює тільки тексти через Claude, структуру блоків не чіпає."""
-    # Завжди використовуємо пост 1751 як зразок структури
-    reference_id = 1751
+    # Знаходимо найкращий шаблон серед опублікованих постів
+    reference_id, template_type = wp.find_best_template(
+        rec["title"], rec.get("description", ""), fallback_id=1751
+    )
     reference_markup = wp.get_raw_content(reference_id, "posts")
 
     # Витягуємо тексти для заміни
