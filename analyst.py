@@ -16,7 +16,7 @@ import anthropic
 
 from lib.google_seo import get_search_console_data, get_ga4_data, get_ga4_events
 from lib.metrics import aggregate_site_totals, find_page_metrics, IMPACT_REVIEW_DAYS
-from lib.explain_why import build_explain_why
+from lib.explain_why import build_explain_why, record_outcome
 from lib.state import load_json, save_json
 from lib.telegram import send_message, send_recommendations_buttons
 from lib.wordpress import WordPressClient
@@ -382,6 +382,8 @@ def main():
             + "\nЗапропонуй 1-2 конкретні майданчики з інструкцією як розмістити посилання."
         )
 
+    learning_log = load_json("learning_log.json", default=[])
+
     explain_why_section = build_explain_why(
         current_totals=current_totals,
         current_gsc=gsc_data,
@@ -393,6 +395,7 @@ def main():
         technical_data=technical_data,
         mode=mode,
         today=today,
+        learning_log=learning_log,
     )
 
     user_message = (
@@ -429,6 +432,20 @@ def main():
     for rec in backlog:
         if rec["id"] in reviewed_ids:
             rec["impact_checked"] = True
+
+    # Оновлюємо learning_log на основі impact reviews
+    for review in impact_reviews:
+        m_before = review.get("metrics_before") or {}
+        m_now = review.get("metrics_now") or {}
+        clicks_before = m_before.get("clicks", 0) or 0
+        clicks_now = m_now.get("clicks", 0) or 0
+        worked = clicks_now >= clicks_before * 1.1 if clicks_before > 0 else None
+        if worked is not None:
+            # Знаходимо тип причини зі zbігу рекомендацій
+            rec_match = next((r for r in backlog if r["id"] == review["id"]), {})
+            cause_type = rec_match.get("action", "edit_existing")
+            learning_log = record_outcome(review["id"], cause_type, worked, learning_log, today)
+    save_json("learning_log.json", learning_log[-500:])
 
     next_id = (max((r["id"] for r in backlog), default=0)) + 1
     for rec in new_recommendations:
