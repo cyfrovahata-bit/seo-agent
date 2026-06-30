@@ -1,16 +1,119 @@
 """
-Explain Why Engine — детермінований аналіз причин змін SEO-метрик.
+Explain Why Engine v2 — центральний модуль прийняття рішень SEO-агента.
 
-Не використовує Claude API і не вигадує причини.
-Кожне пояснення має рівень впевненості (1-5 зірок) і посилання на конкретні дані.
-Повертає форматований текстовий блок для інжекції в Claude-промпт.
+Архітектура:
+  DataContext   — єдиний контейнер для всіх джерел даних (розширюваний)
+  Evidence      — конкретний факт з джерелом і confidence (0-100)
+  Cause         — причина зміни: evidence + recommendation + effect + risk
+  CausalNode    — один вузол метрики з переліком причин
+  CausalChain   — причинно-наслідковий ланцюг через кілька вузлів
+  ExplainResult — повний результат аналізу
+
+Публічне API (зворотно сумісне):
+  build_data_context(...)  → DataContext
+  build_explain_why(...)   → str  (для Claude-промпту)
+  analyze_page(...)        → str  (глибокий аналіз однієї сторінки)
+  analyze_for_impact_review(...) → str  (ефект конкретної рекомендації)
+
+Принципи:
+  - Жодних Claude API викликів — тільки детерміновані правила
+  - Кожна Evidence містить source і конкретні числа
+  - Confidence коригується через learning_log
+  - Нові джерела даних додаються через DataContext без змін правил
 """
 
 import datetime
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 
-# --- Допоміжні функції ---
+# ─────────────────────────────────────────────
+# Типи даних
+# ─────────────────────────────────────────────
+
+@dataclass
+class Evidence:
+    text: str           # "позиція впала 8 → 12"
+    source: str         # "GSC" | "GA4" | "keyword_history" | "recommendations" | "PageSpeed"
+    confidence: int     # 0–100
+
+
+@dataclass
+class Cause:
+    cause_type: str             # ідентифікатор для learning_log: "position_drop", "new_content", …
+    description: str            # людський опис причини
+    evidence: list[Evidence]
+    confidence: int             # 0–100, може бути скориговано learning_log
+    recommendation: str         # що рекомендується зробити
+    expected_effect: str        # очікуваний результат якщо виконати
+    risk: str                   # ризик якщо не діяти або помилились
+
+
+@dataclass
+class CausalNode:
+    metric: str             # "clicks", "impressions", "sessions", "ctr", "position", "conversions"
+    label: str              # "Кліки"
+    direction: str          # "up" | "down" | "stable"
+    prev_val: float
+    curr_val: float
+    change_pct: float | None
+    causes: list[Cause]
+
+
+@dataclass
+class CausalChain:
+    title: str
+    nodes: list[CausalNode]
+    summary: str            # 1-2 речення підсумку ланцюга
+
+
+@dataclass
+class ExplainResult:
+    site_chains: list[CausalChain]          # зміни на рівні сайту
+    page_nodes: list[CausalNode]            # сторінки з проблемами
+    query_nodes: list[CausalNode]           # зміни позицій запитів
+    conversion_analysis: str               # аналіз конверсій
+    recent_changes_analysis: list[str]     # ефект нещодавніх змін
+    has_data: bool
+
+
+@dataclass
+class DataContext:
+    """
+    Єдиний контейнер для всіх джерел даних.
+    Щоб додати нове джерело (напр. Google Ads) — просто додай поле і передай у build_data_context().
+    Правила аналізу читають з DataContext, тому не потребують змін.
+    """
+    # Поточний і попередній стан
+    current_totals: dict
+    prev_totals: dict | None
+    # Search Console
+    gsc_data: list[dict]
+    # Google Analytics 4
+    ga4_data: list[dict]
+    ga4_events: list[dict]          # [{name, count}, …]
+    # Keyword history
+    keyword_history: dict           # {query: [{date, position, clicks, impressions}, …]}
+    keyword_changes: list[dict]     # вже обраховані зміни позицій
+    # Recommendations
+    recent_published: list[dict]    # опубліковані за останні 30 днів
+    backlog: list[dict]
+    # Technical
+    technical_data: dict | None     # {url: {performance, lcp, …}}
+    # Learning log (persistence через data/learning_log.json)
+    learning_log: list[dict]        # [{cause_type, worked, date}, …]
+    # Meta
+    mode: str
+    today: datetime.date
+    # Розширення: майбутні джерела (None = не підключено)
+    google_ads_data: dict | None = None
+    clarity_data: dict | None = None
+    backlinks_data: dict | None = None
+
+
+# ─────────────────────────────────────────────
+# Допоміжні функції
+# ─────────────────────────────────────────────
 
 def _pct(new_val: float, old_val: float) -> float | None:
     if not old_val:
@@ -18,13 +121,7 @@ def _pct(new_val: float, old_val: float) -> float | None:
     return round((new_val - old_val) / old_val * 100, 1)
 
 
-def _stars(confidence: int) -> str:
-    """1-5 → ★★★★★ / ★★★★☆ тощо"""
-    confidence = max(1, min(5, confidence))
-    return "★" * confidence + "☆" * (5 - confidence)
-
-
-def _path(url: str) -> str:
+def _path_from_url(url: str) -> str:
     p = urlparse(url).path
     return p.rstrip("/") or "/"
 
@@ -36,131 +133,623 @@ def _days_ago(date_iso: str, today: datetime.date) -> int:
         return 9999
 
 
-# --- Підфункції аналізу ---
+def _conf_bar(confidence: int) -> str:
+    """0-100 → текстове відображення: 92% | ★★★★★"""
+    stars = round(confidence / 20)
+    stars = max(1, min(5, stars))
+    return f"{confidence}% {'★' * stars}{'☆' * (5 - stars)}"
 
-def _analyze_site_totals(current: dict, history: list[dict], mode: str) -> list[dict]:
-    """Знаходить суттєві зміни на рівні сайту (кліки, покази, сесії)."""
-    relevant = [e for e in history if e.get("mode") == mode]
+
+def _learning_boost(cause_type: str, learning_log: list[dict]) -> int:
+    """
+    Коригує confidence на основі того, чи спрацювала ця причина раніше.
+    +10 за кожен підтверджений випадок, -8 за кожен спростований (max ±30).
+    """
+    relevant = [e for e in learning_log if e.get("cause_type") == cause_type]
     if not relevant:
+        return 0
+    delta = sum(10 if e.get("worked") else -8 for e in relevant)
+    return max(-30, min(30, delta))
+
+
+def _adjusted(base_confidence: int, cause_type: str, learning_log: list[dict]) -> int:
+    return max(5, min(98, base_confidence + _learning_boost(cause_type, learning_log)))
+
+
+# ─────────────────────────────────────────────
+# Правила — кожна функція повертає list[Cause]
+# ─────────────────────────────────────────────
+
+def _rules_for_impressions_drop(ctx: DataContext) -> list[Cause]:
+    causes = []
+    drops = [k for k in ctx.keyword_changes if k["direction"] == "down" and k["clicks"] > 0]
+    if drops:
+        ev = [Evidence(
+            f"позиція «{k['query']}»: {k['prev_pos']} → {k['curr_pos']} ({k['diff']:+.1f})",
+            "keyword_history", 90
+        ) for k in drops[:3]]
+        causes.append(Cause(
+            cause_type="position_drop",
+            description="Позиції ключових запитів погіршились — менше показів",
+            evidence=ev,
+            confidence=_adjusted(90, "position_drop", ctx.learning_log),
+            recommendation="Перевір контент сторінок з падінням позицій, оновити мета-теги або контент",
+            expected_effect="Повернення позицій через 2-4 тижні після правки",
+            risk="Без дій позиції продовжать падати",
+        ))
+    slow = _get_slow_pages(ctx)
+    if slow:
+        causes.append(Cause(
+            cause_type="pagespeed_low",
+            description="Повільне завантаження — Google знижує ранжування",
+            evidence=[Evidence(f"{p['page']}: PageSpeed {p['performance']}/100", "PageSpeed", 65) for p in slow[:2]],
+            confidence=_adjusted(65, "pagespeed_low", ctx.learning_log),
+            recommendation="Оптимізувати зображення (WebP), мінімізувати JS/CSS",
+            expected_effect="PageSpeed +20-40 балів → позитивний сигнал для ранжування",
+            risk="Повільні сторінки також збільшують відмови",
+        ))
+    return causes
+
+
+def _rules_for_impressions_growth(ctx: DataContext) -> list[Cause]:
+    causes = []
+    new_q = _get_new_queries(ctx)
+    if new_q:
+        q_list = ", ".join(f"«{q['query']}»" for q in new_q[:3])
+        causes.append(Cause(
+            cause_type="new_queries",
+            description=f"Google почав показувати сайт за новими запитами: {q_list}",
+            evidence=[Evidence(f"«{q['query']}»: {q['impressions']} показів (новий)", "GSC", 92) for q in new_q[:3]],
+            confidence=_adjusted(92, "new_queries", ctx.learning_log),
+            recommendation="Перевір ці запити — можливо варто розширити контент під них",
+            expected_effect="Якщо клікають — зростання трафіку без додаткових дій",
+            risk="Якщо запити нерелевантні — трафік буде з відмовами",
+        ))
+    for pub in ctx.recent_published[:2]:
+        if pub.get("type") == "content" and pub.get("action") == "create_new":
+            days = pub["_days_ago"]
+            base_conf = 85 if 14 <= days <= 60 else (50 if days < 14 else 70)
+            causes.append(Cause(
+                cause_type="new_content_indexed",
+                description=f"Стаття «{pub['title']}» ({days} днів тому) почала збирати покази",
+                evidence=[Evidence(f"Опубліковано {pub.get('published_date', '?')}", "recommendations", base_conf)],
+                confidence=_adjusted(base_conf, "new_content_indexed", ctx.learning_log),
+                recommendation="Стежити за запитами з цієї статті, можливо додати внутрішні посилання",
+                expected_effect="Поступове зростання протягом 1-3 місяців",
+                risk="Якщо покази є але кліків немає — переробити title/description",
+            ))
+    gains = [k for k in ctx.keyword_changes if k["direction"] == "up"]
+    if gains:
+        ev = [Evidence(f"«{k['query']}»: {k['prev_pos']} → {k['curr_pos']} ({k['diff']:+.1f})", "keyword_history", 88) for k in gains[:3]]
+        causes.append(Cause(
+            cause_type="position_improvement",
+            description="Позиції ключових запитів покращились",
+            evidence=ev,
+            confidence=_adjusted(88, "position_improvement", ctx.learning_log),
+            recommendation="Зафіксувати що саме змінилось — можливо повторити підхід для інших сторінок",
+            expected_effect="Подальше зростання кліків при стабільному CTR",
+            risk="Позиції можуть коливатися, не рахувати зростання постійним до 30 днів стабільності",
+        ))
+    return causes
+
+
+def _rules_for_clicks_drop(ctx: DataContext) -> list[Cause]:
+    causes = _rules_for_impressions_drop(ctx)
+    # CTR міг впасти при стабільних позиціях
+    curr_clicks = ctx.current_totals.get("clicks", 0)
+    curr_impr = ctx.current_totals.get("impressions", 0)
+    if ctx.prev_totals:
+        prev_clicks = ctx.prev_totals.get("clicks", 0)
+        prev_impr = ctx.prev_totals.get("impressions", 0)
+        curr_ctr = curr_clicks / curr_impr if curr_impr else 0
+        prev_ctr = prev_clicks / prev_impr if prev_impr else 0
+        if prev_ctr and (curr_ctr - prev_ctr) / prev_ctr < -0.15:
+            # CTR впав — перевіряємо чи були правки title
+            title_edits = [p for p in ctx.recent_published if "заголовок" in p.get("title", "").lower() or "title" in p.get("title", "").lower()]
+            if title_edits:
+                causes.append(Cause(
+                    cause_type="title_change_ctr",
+                    description=f"CTR впав після зміни заголовку «{title_edits[0]['title']}»",
+                    evidence=[
+                        Evidence(f"CTR: {prev_ctr:.1%} → {curr_ctr:.1%}", "GSC", 78),
+                        Evidence(f"Правка {title_edits[0].get('published_date', '?')}", "recommendations", 70),
+                    ],
+                    confidence=_adjusted(75, "title_change_ctr", ctx.learning_log),
+                    recommendation="Порівняй новий title з конкурентами. Якщо програє — повернути або переформулювати",
+                    expected_effect="CTR +1-3% після покращення title",
+                    risk="Якщо не реагувати — кліки продовжать падати навіть при хороших позиціях",
+                ))
+            else:
+                causes.append(Cause(
+                    cause_type="ctr_organic_drop",
+                    description=f"CTR впав без видимих змін на сайті ({prev_ctr:.1%} → {curr_ctr:.1%})",
+                    evidence=[Evidence(f"CTR: {prev_ctr:.1%} → {curr_ctr:.1%}", "GSC", 72)],
+                    confidence=_adjusted(55, "ctr_organic_drop", ctx.learning_log),
+                    recommendation="Перевір конкурентів у SERP — можливо з'явились нові або Google змінив формат видачі",
+                    expected_effect="Оновлення title/description може повернути CTR",
+                    risk="Низький CTR означає витрачений потенціал навіть при хороших позиціях",
+                ))
+    return causes
+
+
+def _rules_for_sessions_drop(ctx: DataContext) -> list[Cause]:
+    causes = []
+    drops = [k for k in ctx.keyword_changes if k["direction"] == "down"]
+    if drops:
+        causes.append(Cause(
+            cause_type="organic_traffic_drop",
+            description=f"Позиції {len(drops)} запитів погіршились → менше органічного трафіку",
+            evidence=[Evidence(f"«{k['query']}»: {k['prev_pos']} → {k['curr_pos']}", "keyword_history", 85) for k in drops[:3]],
+            confidence=_adjusted(85, "organic_traffic_drop", ctx.learning_log),
+            recommendation="Перевір сторінки цих запитів, оновити контент",
+            expected_effect="Повернення трафіку через 2-6 тижнів після виправлення",
+            risk="Втрата органічних відвідувачів знижує шанс на конверсії",
+        ))
+    slow = _get_slow_pages(ctx)
+    if slow:
+        causes.append(Cause(
+            cause_type="pagespeed_bounce",
+            description="Повільне завантаження — відвідувачі йдуть не дочекавшись",
+            evidence=[Evidence(f"{p['page']}: {p['performance']}/100", "PageSpeed", 70) for p in slow[:2]],
+            confidence=_adjusted(70, "pagespeed_bounce", ctx.learning_log),
+            recommendation="Оптимізувати зображення та час до першого відображення (LCP)",
+            expected_effect="Відмови -10-30% після оптимізації",
+            risk="Кожна секунда затримки = -7% конверсій (середня статистика)",
+        ))
+    return causes
+
+
+def _rules_for_zero_conversions(ctx: DataContext) -> list[Cause]:
+    causes = []
+    conv_events = {e["name"]: e["count"] for e in ctx.ga4_events if e["name"] in ("phone_click", "telegram_click", "form_submit")}
+    total = sum(conv_events.values())
+    high_traffic_pages = [p for p in ctx.ga4_data if p.get("sessions", 0) >= 10]
+    if total == 0 and high_traffic_pages:
+        causes.append(Cause(
+            cause_type="no_cta_clicks",
+            description="Жодного кліку по CTA за весь період — кнопки не працюють або погано видні",
+            evidence=[
+                Evidence(f"form_submit: {conv_events.get('form_submit', 0)}", "GA4", 95),
+                Evidence(f"telegram_click: {conv_events.get('telegram_click', 0)}", "GA4", 95),
+                Evidence(f"phone_click: {conv_events.get('phone_click', 0)}", "GA4", 95),
+            ],
+            confidence=_adjusted(92, "no_cta_clicks", ctx.learning_log),
+            recommendation="Перевір: 1) чи видно кнопки на мобільному, 2) чи GTM коректно відстежує кліки, 3) розмістити CTA вище на сторінці",
+            expected_effect="Навіть 1-2 конверсії на місяць = реальні клієнти",
+            risk="Без конверсій весь SEO-трафік не дає бізнес-результату",
+        ))
+    for page in high_traffic_pages[:3]:
+        avg_dur = page.get("avg_session_duration", 0)
+        if avg_dur < 30:
+            causes.append(Cause(
+                cause_type="content_mismatch",
+                description=f"{page.get('page', '')} — люди йдуть за {avg_dur:.0f}с, контент не відповідає запиту",
+                evidence=[Evidence(f"{page['sessions']} сесій, {avg_dur:.0f}с середня тривалість", "GA4", 80)],
+                confidence=_adjusted(78, "content_mismatch", ctx.learning_log),
+                recommendation="Перевір з яких запитів приходять на цю сторінку, переконайся що вступний абзац відповідає їм",
+                expected_effect="Час на сторінці +30-60с → більше шансів на конверсію",
+                risk="Контент-мисматч також погіршує поведінкові сигнали і ранжування",
+            ))
+        elif avg_dur > 120 and total == 0:
+            causes.append(Cause(
+                cause_type="cta_too_low",
+                description=f"{page.get('page', '')} — читають {avg_dur:.0f}с, але CTA не клікають",
+                evidence=[Evidence(f"{page['sessions']} сесій, {avg_dur:.0f}с, 0 конверсій", "GA4", 75)],
+                confidence=_adjusted(72, "cta_too_low", ctx.learning_log),
+                recommendation="Додай CTA в середину сторінки, не тільки в кінці. Перевір чи CTA кнопка помітна (колір, розмір)",
+                expected_effect="Конверсія +0.5-2% після покращення розміщення CTA",
+                risk="Читачі, які дочитали, вже зацікавлені — їх відхід = пряма втрата клієнта",
+            ))
+    return causes
+
+
+def _rules_for_position_change(kw: dict, ctx: DataContext) -> list[Cause]:
+    causes = []
+    if kw["direction"] == "down":
+        # Перевіряємо чи були правки на цій сторінці
+        related_edits = [
+            p for p in ctx.recent_published
+            if p.get("target_page_path") and kw.get("query", "").split()[0] in (p.get("target_page_path") or "")
+        ]
+        if related_edits:
+            causes.append(Cause(
+                cause_type="edit_caused_position_drop",
+                description=f"Можлива реакція Google на нещодавню правку сторінки",
+                evidence=[Evidence(f"Правка «{related_edits[0]['title']}» ({related_edits[0].get('published_date', '?')})", "recommendations", 55)],
+                confidence=_adjusted(50, "edit_caused_position_drop", ctx.learning_log),
+                recommendation="Дочекайтись 2-3 тижні — Google часто тимчасово знижує позиції після змін",
+                expected_effect="Позиції стабілізуються або повернуться за 14-21 день",
+                risk="Якщо не повернуться — можливо правка погіршила relevance сторінки",
+            ))
+        else:
+            causes.append(Cause(
+                cause_type="algorithm_fluctuation",
+                description="Коливання алгоритму Google — нормальне для молодого сайту",
+                evidence=[Evidence(f"{kw['prev_pos']} → {kw['curr_pos']} ({kw['diff']:+.1f})", "keyword_history", 45)],
+                confidence=_adjusted(45, "algorithm_fluctuation", ctx.learning_log),
+                recommendation="Якщо падіння триватиме >2 тижні — перевірити контент і технічний стан сторінки",
+                expected_effect="Позиції повернуться самостійно якщо причина — флуктуація",
+                risk="Якщо ігнорувати тривале падіння — можна пропустити реальну проблему",
+            ))
+    else:
+        for pub in ctx.recent_published:
+            if pub.get("type") in ("content", "onpage"):
+                causes.append(Cause(
+                    cause_type="content_improvement_effect",
+                    description=f"Покращення позиції після зміни «{pub['title']}»",
+                    evidence=[Evidence(f"Правка {pub.get('published_date', '?')}, {pub['_days_ago']} днів тому", "recommendations", 60)],
+                    confidence=_adjusted(58, "content_improvement_effect", ctx.learning_log),
+                    recommendation="Зафіксувати цей підхід, застосувати до схожих сторінок",
+                    expected_effect="Зростання позицій може тривати ще 2-4 тижні",
+                    risk="Не змінювати те що почало працювати",
+                ))
+    return causes
+
+
+# ─────────────────────────────────────────────
+# Внутрішні допоміжні
+# ─────────────────────────────────────────────
+
+def _get_slow_pages(ctx: DataContext) -> list[dict]:
+    if not ctx.technical_data or "error" in ctx.technical_data:
         return []
-    prev = relevant[-1]["site_totals"]
-    findings = []
-    for key, label in [
-        ("clicks", "кліки"),
-        ("impressions", "покази"),
-        ("sessions", "сесії"),
-        ("users", "користувачі"),
-    ]:
-        pct = _pct(current.get(key, 0), prev.get(key, 0))
+    result = []
+    for url, data in ctx.technical_data.items():
+        if isinstance(data, dict) and data.get("performance", 100) < 50:
+            result.append({"page": _path_from_url(url), "performance": data["performance"], "lcp": data.get("lcp")})
+    return result
+
+
+def _get_new_queries(ctx: DataContext) -> list[dict]:
+    result = []
+    for row in ctx.gsc_data:
+        q = row.get("query", "")
+        entries = ctx.keyword_history.get(q, [])
+        if len(entries) <= 1 and row.get("impressions", 0) >= 3:
+            result.append({"query": q, "impressions": row["impressions"], "clicks": row.get("clicks", 0)})
+    result.sort(key=lambda x: -x["impressions"])
+    return result[:8]
+
+
+def _prev_totals_from_history(history: list[dict], mode: str) -> dict | None:
+    relevant = [e for e in history if e.get("mode") == mode]
+    return relevant[-1]["site_totals"] if relevant else None
+
+
+# ─────────────────────────────────────────────
+# Побудова CausalChain
+# ─────────────────────────────────────────────
+
+def _build_site_chains(ctx: DataContext) -> list[CausalChain]:
+    chains = []
+    metrics_config = [
+        ("clicks",      "Кліки",        "clicks"),
+        ("impressions", "Покази",        "impressions"),
+        ("sessions",    "Сесії",         "sessions"),
+        ("users",       "Користувачі",   "users"),
+    ]
+
+    for metric, label, key in metrics_config:
+        curr = ctx.current_totals.get(key, 0)
+        prev = ctx.prev_totals.get(key, 0) if ctx.prev_totals else None
+        if prev is None:
+            continue
+        pct = _pct(curr, prev)
         if pct is None or abs(pct) < 15:
             continue
-        findings.append({
-            "metric": key,
-            "label": label,
-            "prev": prev.get(key, 0),
-            "curr": current.get(key, 0),
-            "pct": pct,
-        })
-    return findings
+
+        direction = "up" if pct > 0 else "down"
+        if metric == "clicks":
+            causes = _rules_for_clicks_drop(ctx) if direction == "down" else _rules_for_impressions_growth(ctx)
+        elif metric == "impressions":
+            causes = _rules_for_impressions_drop(ctx) if direction == "down" else _rules_for_impressions_growth(ctx)
+        elif metric in ("sessions", "users"):
+            causes = _rules_for_sessions_drop(ctx) if direction == "down" else _rules_for_impressions_growth(ctx)
+        else:
+            causes = []
+
+        causes.sort(key=lambda c: -c.confidence)
+        node = CausalNode(
+            metric=metric, label=label, direction=direction,
+            prev_val=prev, curr_val=curr, change_pct=pct, causes=causes,
+        )
+        arrow = "↑" if pct > 0 else "↓"
+        summary_parts = []
+        if causes:
+            top = causes[0]
+            summary_parts.append(f"Найімовірніша причина ({top.confidence}%): {top.description}")
+        chains.append(CausalChain(
+            title=f"{arrow} {label} {pct:+.0f}% ({prev} → {curr})",
+            nodes=[node],
+            summary=" | ".join(summary_parts) if summary_parts else "Причина невизначена",
+        ))
+
+    return chains
 
 
-def _analyze_keyword_changes(keyword_history: dict) -> list[dict]:
-    """Аналізує значні зміни позицій ключових слів."""
-    changes = []
+def _build_conversion_chain(ctx: DataContext) -> str:
+    """Аналіз воронки конверсії — повертає текст."""
+    conv_events = {e["name"]: e["count"] for e in ctx.ga4_events if e["name"] in ("phone_click", "telegram_click", "form_submit")}
+    total = sum(conv_events.values())
+    lines = [
+        "🎯 ВОРОНКА КОНВЕРСІЙ:",
+        f"  Заявки (form_submit): {conv_events.get('form_submit', 0)}",
+        f"  Telegram-кліки: {conv_events.get('telegram_click', 0)}",
+        f"  Телефон-кліки: {conv_events.get('phone_click', 0)}",
+        f"  Всього конверсій: {total}",
+    ]
+    if ctx.current_totals.get("sessions", 0) > 0:
+        conv_rate = total / ctx.current_totals["sessions"] * 100
+        lines.append(f"  Конверсія: {conv_rate:.2f}%")
+
+    zero_causes = _rules_for_zero_conversions(ctx)
+    if zero_causes:
+        lines.append("  Виявлені причини низьких конверсій:")
+        for c in zero_causes[:3]:
+            lines.append(f"    [{_conf_bar(c.confidence)}] {c.description}")
+            lines.append(f"      → {c.recommendation}")
+    return "\n".join(lines)
+
+
+def _build_recent_changes_analysis(ctx: DataContext) -> list[str]:
+    lines = []
+    for pub in ctx.recent_published:
+        days = pub["_days_ago"]
+        page = pub.get("target_page_path") or "новий контент"
+        action = pub.get("action", "")
+
+        # Знаходимо поточні метрики сторінки для оцінки ефекту
+        current_page_metrics = None
+        if page and page != "новий контент":
+            from lib.metrics import find_page_metrics
+            current_page_metrics = find_page_metrics(page, ctx.gsc_data, ctx.ga4_data)
+
+        if days < 7:
+            status = "⏳ надто рано (Google ще індексує)"
+            conf = 20
+        elif days < 14:
+            status = "🔄 рання фаза (ефект ще формується)"
+            conf = 40
+        elif days < 30:
+            status = "🔍 оцінка ефекту (оптимальний час)"
+            conf = 75
+        else:
+            status = "✅ ефект сформувався"
+            conf = 90
+
+        summary = f"  «{pub['title']}» ({page}) — {days} дн. тому | {status}"
+        if current_page_metrics and page != "новий контент":
+            summary += f"\n    Кліки: {current_page_metrics.get('clicks', 0)}, Покази: {current_page_metrics.get('impressions', 0)}, Сесії: {current_page_metrics.get('sessions', 0)}"
+
+        # Зв'яжи з learning_log
+        boost = _learning_boost(
+            "new_content_indexed" if action == "create_new" else "content_improvement_effect",
+            ctx.learning_log,
+        )
+        if boost > 0:
+            summary += f"\n    📚 Цей тип змін раніше спрацьовував (+{boost}% до confidence)"
+        elif boost < 0:
+            summary += f"\n    ⚠️ Цей тип змін раніше давав слабкий результат ({boost}% до confidence)"
+
+        lines.append(summary)
+    return lines
+
+
+def _build_query_nodes(ctx: DataContext) -> list[CausalNode]:
+    nodes = []
+    for kw in ctx.keyword_changes[:8]:
+        causes = _rules_for_position_change(kw, ctx)
+        causes.sort(key=lambda c: -c.confidence)
+        nodes.append(CausalNode(
+            metric="position", label=f"Позиція «{kw['query']}»",
+            direction=kw["direction"],
+            prev_val=kw["prev_pos"], curr_val=kw["curr_pos"],
+            change_pct=None,
+            causes=causes,
+        ))
+    return nodes
+
+
+# ─────────────────────────────────────────────
+# Форматування виводу
+# ─────────────────────────────────────────────
+
+def _format_cause(c: Cause) -> list[str]:
+    lines = [f"    [{_conf_bar(c.confidence)}] {c.description}"]
+    for ev in c.evidence[:2]:
+        lines.append(f"      📊 {ev.text} (джерело: {ev.source})")
+    lines.append(f"      → Дія: {c.recommendation}")
+    lines.append(f"      → Ефект: {c.expected_effect}")
+    lines.append(f"      ⚠ Ризик: {c.risk}")
+    return lines
+
+
+def _format_result(result: ExplainResult) -> str:
+    sections = ["\n🧠 АНАЛІЗ ПРИЧИН ЗМІН:\n"]
+
+    # 1. Зміни на рівні сайту
+    for chain in result.site_chains:
+        sections.append(f"\n  {chain.title}")
+        for node in chain.nodes:
+            if not node.causes:
+                sections.append("    (недостатньо даних для визначення причини)")
+                continue
+            for c in node.causes[:3]:
+                sections.extend(_format_cause(c))
+
+    # 2. Зміни позицій запитів
+    if result.query_nodes:
+        sections.append("\n  📍 Зміни позицій запитів:")
+        for node in result.query_nodes:
+            arrow = "↓" if node.direction == "down" else "↑"
+            sections.append(f"    {arrow} {node.label}: {node.prev_val} → {node.curr_val}")
+            for c in node.causes[:1]:
+                sections.append(f"      [{_conf_bar(c.confidence)}] {c.description}")
+                sections.append(f"      → {c.recommendation}")
+
+    # 3. Воронка конверсій
+    if result.conversion_analysis:
+        sections.append(f"\n  {result.conversion_analysis}")
+
+    # 4. Нещодавні зміни
+    if result.recent_changes_analysis:
+        sections.append("\n  📌 Ефект нещодавніх змін:")
+        sections.extend(result.recent_changes_analysis)
+
+    if not result.has_data:
+        sections.append("  (недостатньо даних для аналізу — потрібна більша historія)")
+
+    sections.append(
+        "\n  ⚠️ Інструкція для Claude: використовуй ці дані щоб пояснювати ЧОМУ відбулись зміни. "
+        "НІКОЛИ не вигадуй причини — тільки підкріплені даними вище. "
+        "Після кожної суттєвої зміни додавай блок «🧠 Чому це сталося» з причинами і confidence."
+    )
+    return "\n".join(sections)
+
+
+# ─────────────────────────────────────────────
+# Публічне API
+# ─────────────────────────────────────────────
+
+def build_data_context(
+    current_totals: dict,
+    current_gsc: list[dict],
+    current_ga4: list[dict],
+    history: list[dict],
+    keyword_history: dict,
+    backlog: list[dict],
+    ga4_events: list[dict],
+    technical_data: dict | None,
+    learning_log: list[dict],
+    mode: str,
+    today: datetime.date,
+) -> DataContext:
+    """Збирає DataContext з усіх доступних джерел."""
+    prev_totals = _prev_totals_from_history(history, mode)
+    keyword_changes = []
     for query, entries in keyword_history.items():
         if len(entries) < 2:
             continue
-        prev = entries[-2]
-        curr = entries[-1]
-        diff = round(curr["position"] - prev["position"], 1)
+        diff = round(entries[-1]["position"] - entries[-2]["position"], 1)
         if abs(diff) < 3:
             continue
-        changes.append({
+        keyword_changes.append({
             "query": query,
-            "prev_pos": prev["position"],
-            "curr_pos": curr["position"],
+            "prev_pos": entries[-2]["position"],
+            "curr_pos": entries[-1]["position"],
             "diff": diff,
-            "clicks": curr["clicks"],
+            "clicks": entries[-1]["clicks"],
             "direction": "down" if diff > 0 else "up",
         })
-    changes.sort(key=lambda x: abs(x["diff"]), reverse=True)
-    return changes[:10]
+    keyword_changes.sort(key=lambda x: abs(x["diff"]), reverse=True)
 
-
-def _find_recent_published(backlog: list[dict], today: datetime.date, window_days: int = 30) -> list[dict]:
-    """Знаходить рекомендації, опубліковані за останні N днів."""
-    recent = []
+    recent_published = []
     for rec in backlog:
         if rec.get("status") == "published" and rec.get("published_date"):
             days = _days_ago(rec["published_date"], today)
-            if days <= window_days:
-                recent.append({**rec, "_days_ago": days})
-    return recent
+            if days <= 30:
+                recent_published.append({**rec, "_days_ago": days})
+
+    return DataContext(
+        current_totals=current_totals,
+        prev_totals=prev_totals,
+        gsc_data=current_gsc,
+        ga4_data=current_ga4,
+        ga4_events=ga4_events,
+        keyword_history=keyword_history,
+        keyword_changes=keyword_changes,
+        recent_published=recent_published,
+        backlog=backlog,
+        technical_data=technical_data,
+        learning_log=learning_log,
+        mode=mode,
+        today=today,
+    )
 
 
-def _analyze_page_conversions(ga4_data: list[dict], ga4_events: list[dict]) -> list[dict]:
-    """Сторінки з трафіком але без конверсій (phone_click, telegram_click, form_submit)."""
-    # Загальна кількість конверсій по сайту
-    conversion_events = {
-        e["name"]: e["count"]
-        for e in ga4_events
-        if e["name"] in ("phone_click", "telegram_click", "form_submit")
-    }
-    total_conversions = sum(conversion_events.values())
-
-    issues = []
-    for page in ga4_data:
-        sessions = page.get("sessions", 0)
-        if sessions < 10:
-            continue
-        avg_duration = page.get("avg_session_duration", 0)
-        issues.append({
-            "page": page.get("page", ""),
-            "sessions": sessions,
-            "avg_duration": round(avg_duration, 0),
-            "total_site_conversions": total_conversions,
-            "conversion_events": conversion_events,
-        })
-    issues.sort(key=lambda x: -x["sessions"])
-    return issues[:5]
+def analyze(ctx: DataContext) -> ExplainResult:
+    """Повний аналіз на основі DataContext."""
+    site_chains = _build_site_chains(ctx)
+    query_nodes = _build_query_nodes(ctx)
+    conversion_analysis = _build_conversion_chain(ctx)
+    recent_changes = _build_recent_changes_analysis(ctx)
+    has_data = bool(site_chains or query_nodes or ctx.recent_published)
+    return ExplainResult(
+        site_chains=site_chains,
+        page_nodes=[],
+        query_nodes=query_nodes,
+        conversion_analysis=conversion_analysis,
+        recent_changes_analysis=recent_changes,
+        has_data=has_data,
+    )
 
 
-def _analyze_pagespeed(technical_data: dict | None) -> list[dict]:
-    """Знаходить сторінки з критично низьким PageSpeed."""
-    if not technical_data or "error" in technical_data:
-        return []
-    slow_pages = []
-    for page_url, data in technical_data.items():
-        if not isinstance(data, dict):
-            continue
-        perf = data.get("performance", 100)
-        if perf < 50:
-            slow_pages.append({
-                "page": _path(page_url),
-                "performance": perf,
-                "lcp": data.get("lcp"),
-            })
-    return slow_pages
+def analyze_page(page_path: str, ctx: DataContext) -> str:
+    """Глибокий аналіз однієї конкретної сторінки — для impact review і аналізу рекомендацій."""
+    from lib.metrics import find_page_metrics
+    metrics = find_page_metrics(page_path, ctx.gsc_data, ctx.ga4_data)
+    lines = [f"📄 АНАЛІЗ СТОРІНКИ {page_path}:"]
+    lines.append(f"  Кліки: {metrics.get('clicks', 0)} | Покази: {metrics.get('impressions', 0)} | Сесії: {metrics.get('sessions', 0)}")
+
+    # Пов'язані зміни з backlog
+    related = [r for r in ctx.backlog if r.get("target_page_path") == page_path and r.get("status") == "published"]
+    if related:
+        lines.append("  Застосовані зміни:")
+        for r in related:
+            lines.append(f"    • «{r['title']}» ({r.get('published_date', '?')})")
+
+    # Конверсії по сайту (поки немає розбивки per-page)
+    conv_events = {e["name"]: e["count"] for e in ctx.ga4_events if e["name"] in ("phone_click", "telegram_click", "form_submit")}
+    total_conv = sum(conv_events.values())
+    page_sessions = metrics.get("sessions", 0)
+    if page_sessions >= 10 and total_conv == 0:
+        lines.append(f"  ⚠️ {page_sessions} сесій на сайті, але 0 конверсій — CTA потребує уваги")
+
+    # Повільна сторінка?
+    slow = _get_slow_pages(ctx)
+    page_slow = [s for s in slow if s["page"] == page_path]
+    if page_slow:
+        lines.append(f"  ⚡ PageSpeed: {page_slow[0]['performance']}/100 — критично повільна")
+
+    return "\n".join(lines)
 
 
-def _analyze_query_appearance(keyword_history: dict, current_gsc: list[dict]) -> list[dict]:
-    """Знаходить нові запити, яких раніше не було в history."""
-    current_queries = {r["query"] for r in current_gsc}
-    known_queries = set(keyword_history.keys())
-    # Запити які з'явились в поточному звіті і мають мало історичних записів (≤1)
-    new_queries = []
-    for q in current_queries:
-        entries = keyword_history.get(q, [])
-        if len(entries) <= 1:
-            row = next((r for r in current_gsc if r["query"] == q), {})
-            impressions = row.get("impressions", 0)
-            if impressions >= 3:
-                new_queries.append({"query": q, "impressions": impressions, "clicks": row.get("clicks", 0)})
-    new_queries.sort(key=lambda x: -x["impressions"])
-    return new_queries[:8]
+def analyze_for_impact_review(rec: dict, ctx: DataContext) -> str:
+    """Пояснення ефекту конкретної рекомендації для impact review."""
+    page = rec.get("target_page_path")
+    lines = [f"📊 IMPACT REVIEW: «{rec['title']}»"]
+    if page:
+        lines.append(analyze_page(page, ctx))
+    baseline = rec.get("baseline_metrics", {})
+    from lib.metrics import find_page_metrics
+    current = find_page_metrics(page, ctx.gsc_data, ctx.ga4_data) if page else {}
+    if baseline and current:
+        for key, label in [("clicks", "кліки"), ("impressions", "покази"), ("sessions", "сесії")]:
+            b = baseline.get(key, 0)
+            c = current.get(key, 0)
+            pct = _pct(c, b)
+            if pct is not None:
+                arrow = "↑" if pct > 0 else "↓"
+                lines.append(f"  {arrow} {label}: {b} → {c} ({pct:+.0f}%)")
+    days = _days_ago(rec.get("published_date", ""), ctx.today)
+    boost = _learning_boost(
+        "new_content_indexed" if rec.get("action") == "create_new" else "content_improvement_effect",
+        ctx.learning_log,
+    )
+    lines.append(f"  Опубліковано {days} днів тому | learning_log поправка: {boost:+d}%")
+    return "\n".join(lines)
 
 
-# --- Основна функція ---
+def record_outcome(rec_id: int, cause_type: str, worked: bool, learning_log: list[dict], today: datetime.date) -> list[dict]:
+    """Фіксує результат у learning_log — викликається з analyst.py після impact review."""
+    learning_log.append({
+        "rec_id": rec_id,
+        "cause_type": cause_type,
+        "worked": worked,
+        "date": today.isoformat(),
+    })
+    return learning_log[-500:]  # зберігаємо останні 500 записів
+
 
 def build_explain_why(
     current_totals: dict,
@@ -173,178 +762,24 @@ def build_explain_why(
     technical_data: dict | None,
     mode: str,
     today: datetime.date,
+    learning_log: list[dict] | None = None,
 ) -> str:
     """
-    Повертає текстовий блок з поясненнями причин змін для інжекції в Claude-промпт.
-    Всі твердження базуються на наявних даних, кожне має рівень впевненості.
+    Зворотно сумісний публічний метод.
+    Будує DataContext → аналізує → форматує рядок для Claude-промпту.
     """
-    lines = ["\n🧠 АНАЛІЗ ПРИЧИН ЗМІН (дані для пояснення «чому так сталося»):"]
-    has_content = False
-
-    # 1. Зміни на рівні сайту
-    site_changes = _analyze_site_totals(current_totals, history, mode)
-    kw_changes = _analyze_keyword_changes(keyword_history)
-    recent_published = _find_recent_published(backlog, today, window_days=30)
-    new_queries = _analyze_query_appearance(keyword_history, current_gsc)
-    slow_pages = _analyze_pagespeed(technical_data)
-
-    for change in site_changes:
-        has_content = True
-        direction = "↑" if change["pct"] > 0 else "↓"
-        lines.append(
-            f"\n  {direction} {change['label'].capitalize()} "
-            f"{'зросли' if change['pct'] > 0 else 'впали'} "
-            f"({change['pct']:+.0f}%): {change['prev']} → {change['curr']}"
-        )
-        causes = []
-
-        if change["metric"] in ("clicks", "impressions"):
-            # Позиції впали → кліків менше
-            drops = [k for k in kw_changes if k["direction"] == "down" and k["clicks"] > 0]
-            if drops and change["pct"] < 0:
-                for kw in drops[:3]:
-                    causes.append((5, f"позиція за «{kw['query']}» впала: {kw['prev_pos']} → {kw['curr_pos']} ({kw['diff']:+.1f} позицій)"))
-
-            # Позиції зросли → більше кліків
-            gains = [k for k in kw_changes if k["direction"] == "up"]
-            if gains and change["pct"] > 0:
-                for kw in gains[:3]:
-                    causes.append((5, f"позиція за «{kw['query']}» покращилась: {kw['prev_pos']} → {kw['curr_pos']} ({kw['diff']:+.1f} позицій)"))
-
-            # Нові запити → покази зросли
-            if new_queries and change["metric"] == "impressions" and change["pct"] > 0:
-                q_list = ", ".join(f"«{q['query']}»" for q in new_queries[:3])
-                causes.append((5, f"Google почав показувати сайт за новими запитами: {q_list}"))
-
-            # Недавня публікація → ефект
-            if recent_published and change["pct"] > 0:
-                for pub in recent_published[:2]:
-                    if pub.get("type") == "content" and pub.get("action") == "create_new":
-                        causes.append((4, f"стаття «{pub['title']}» опублікована {pub['_days_ago']} днів тому — може давати покази"))
-                    elif pub.get("action") == "edit_existing":
-                        causes.append((3, f"правка «{pub['title']}» ({pub['_days_ago']} днів тому) — очікуємо реакцію Google"))
-
-            # Технічні проблеми → падіння
-            if slow_pages and change["pct"] < 0:
-                causes.append((2, f"низька швидкість завантаження ({len(slow_pages)} сторінок з PageSpeed < 50) — може впливати на ранжування"))
-
-        if change["metric"] in ("sessions", "users"):
-            if change["pct"] < 0:
-                drops = [k for k in kw_changes if k["direction"] == "down"]
-                if drops:
-                    causes.append((4, f"позиції за {len(drops)} запитами впали — менше органічного трафіку"))
-                if slow_pages:
-                    causes.append((3, f"повільне завантаження ({len(slow_pages)} сторінок < 50 балів) — частина відвідувачів не чекає"))
-            if change["pct"] > 0:
-                if new_queries:
-                    causes.append((4, f"нові запити дають додаткові переходи ({len(new_queries)} нових)"))
-                for pub in recent_published[:1]:
-                    if pub.get("type") == "content":
-                        causes.append((4, f"нова стаття «{pub['title']}» ({pub['_days_ago']} днів) приводить відвідувачів"))
-
-        for stars, reason in causes:
-            lines.append(f"    {_stars(stars)} {reason}")
-
-        if not causes:
-            lines.append("    (недостатньо даних для визначення конкретної причини)")
-
-    # 2. Значні зміни позицій окремих запитів
-    if kw_changes:
-        has_content = True
-        lines.append("\n  📍 Значні зміни позицій запитів:")
-        for kw in kw_changes[:5]:
-            arrow = "↓" if kw["direction"] == "down" else "↑"
-            lines.append(
-                f"    {arrow} «{kw['query']}»: {kw['prev_pos']} → {kw['curr_pos']} "
-                f"({kw['diff']:+.1f}) | кліків: {kw['clicks']}"
-            )
-            # Причини зміни позиції
-            if kw["direction"] == "down":
-                for pub in recent_published:
-                    if pub.get("target_page_path") and kw.get("query", "") in pub.get("title", "").lower():
-                        lines.append(f"      {_stars(3)} правка «{pub['title']}» — можлива реакція Google на зміни")
-                if slow_pages:
-                    lines.append(f"      {_stars(2)} технічні проблеми можуть впливати на позиції")
-
-    # 3. Нові запити (чому ростуть покази)
-    if new_queries:
-        has_content = True
-        lines.append(f"\n  🆕 Нові запити (Google почав показувати за ними вперше):")
-        for q in new_queries[:5]:
-            lines.append(f"    • «{q['query']}» — {q['impressions']} показів, {q['clicks']} кліків")
-        # Пов'язати з нещодавніми публікаціями
-        for pub in recent_published:
-            if pub.get("type") == "content":
-                lines.append(
-                    f"    {_stars(4)} {pub['_days_ago']} днів тому опубліковано «{pub['title']}» — "
-                    f"нові запити можуть бути з цієї статті"
-                )
-
-    # 4. Сторінки з трафіком але проблемами конверсії
-    conv_issues = _analyze_page_conversions(current_ga4, ga4_events)
-    if conv_issues:
-        has_content = True
-        lines.append("\n  🎯 Аналіз конверсій по сторінках:")
-        total_conv = conv_issues[0]["total_site_conversions"] if conv_issues else 0
-        conv_events = conv_issues[0]["conversion_events"] if conv_issues else {}
-        lines.append(
-            f"    По всьому сайту за період: "
-            f"заявок={conv_events.get('form_submit', 0)}, "
-            f"Telegram-кліків={conv_events.get('telegram_click', 0)}, "
-            f"телефон={conv_events.get('phone_click', 0)}"
-        )
-        if total_conv == 0:
-            lines.append(f"    {_stars(5)} 0 конверсій за весь період — CTA не клікають або форма не відстежується")
-        for page in conv_issues[:3]:
-            if page["avg_duration"] < 30:
-                lines.append(
-                    f"    {_stars(4)} {page['page']} ({page['sessions']} сесій, "
-                    f"{page['avg_duration']}с) — люди не читають, "
-                    f"можлива невідповідність контенту запиту або повільне завантаження"
-                )
-            elif page["avg_duration"] > 120 and total_conv == 0:
-                lines.append(
-                    f"    {_stars(4)} {page['page']} ({page['sessions']} сесій, "
-                    f"{page['avg_duration']}с) — читають довго але не конвертують, "
-                    f"CTA може бути занадто низько або недостатньо помітний"
-                )
-
-    # 5. Технічні проблеми
-    if slow_pages:
-        has_content = True
-        lines.append("\n  ⚡ Технічні причини:")
-        for sp in slow_pages[:3]:
-            lines.append(
-                f"    {_stars(4)} {sp['page']}: PageSpeed {sp['performance']}/100 — "
-                f"повільне завантаження впливає на відмови та ранжування"
-            )
-
-    # 6. Ефект нещодавніх змін
-    if recent_published:
-        has_content = True
-        lines.append("\n  📌 Нещодавні зміни та їх можливий ефект:")
-        for pub in recent_published:
-            days = pub["_days_ago"]
-            page = pub.get("target_page_path") or "новий контент"
-            if days < 7:
-                conf, comment = 2, "надто рано — Google ще не переіндексував"
-            elif days < 14:
-                conf, comment = 3, "рано для оцінки — зазвичай ефект видно після 14-30 днів"
-            elif days < 30:
-                conf, comment = 4, "оптимальний час для оцінки ефекту"
-            else:
-                conf, comment = 5, "ефект вже повністю проявився"
-            lines.append(
-                f"    {_stars(conf)} «{pub['title']}» ({page}) — {days} днів тому. {comment}"
-            )
-
-    if not has_content:
-        lines.append("  (недостатньо даних для аналізу причин — потрібна більша historія)")
-
-    lines.append(
-        "\n  ⚠️ Інструкція для Claude: використовуй ці дані у звіті, щоб пояснювати ЧОМУ "
-        "відбулись зміни. Не вигадуй причини — тільки ті що підкріплені даними вище. "
-        "Додавай блок «🧠 Чому це сталося» після пояснення кожної суттєвої зміни."
+    ctx = build_data_context(
+        current_totals=current_totals,
+        current_gsc=current_gsc,
+        current_ga4=current_ga4,
+        history=history,
+        keyword_history=keyword_history,
+        backlog=backlog,
+        ga4_events=ga4_events,
+        technical_data=technical_data,
+        learning_log=learning_log or [],
+        mode=mode,
+        today=today,
     )
-
-    return "\n".join(lines)
+    result = analyze(ctx)
+    return _format_result(result)
