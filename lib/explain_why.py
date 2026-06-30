@@ -26,6 +26,8 @@ import datetime
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
+from lib.metrics import find_page_metrics
+
 
 # ─────────────────────────────────────────────
 # Типи даних
@@ -501,7 +503,6 @@ def _build_recent_changes_analysis(ctx: DataContext) -> list[str]:
         # Знаходимо поточні метрики сторінки для оцінки ефекту
         current_page_metrics = None
         if page and page != "новий контент":
-            from lib.metrics import find_page_metrics
             current_page_metrics = find_page_metrics(page, ctx.gsc_data, ctx.ga4_data)
 
         if days < 7:
@@ -686,7 +687,6 @@ def analyze(ctx: DataContext) -> ExplainResult:
 
 def analyze_page(page_path: str, ctx: DataContext) -> str:
     """Глибокий аналіз однієї конкретної сторінки — для impact review і аналізу рекомендацій."""
-    from lib.metrics import find_page_metrics
     metrics = find_page_metrics(page_path, ctx.gsc_data, ctx.ga4_data)
     lines = [f"📄 АНАЛІЗ СТОРІНКИ {page_path}:"]
     lines.append(f"  Кліки: {metrics.get('clicks', 0)} | Покази: {metrics.get('impressions', 0)} | Сесії: {metrics.get('sessions', 0)}")
@@ -721,7 +721,6 @@ def analyze_for_impact_review(rec: dict, ctx: DataContext) -> str:
     if page:
         lines.append(analyze_page(page, ctx))
     baseline = rec.get("baseline_metrics", {})
-    from lib.metrics import find_page_metrics
     current = find_page_metrics(page, ctx.gsc_data, ctx.ga4_data) if page else {}
     if baseline and current:
         for key, label in [("clicks", "кліки"), ("impressions", "покази"), ("sessions", "сесії")]:
@@ -742,13 +741,16 @@ def analyze_for_impact_review(rec: dict, ctx: DataContext) -> str:
 
 def record_outcome(rec_id: int, cause_type: str, worked: bool, learning_log: list[dict], today: datetime.date) -> list[dict]:
     """Фіксує результат у learning_log — викликається з analyst.py після impact review."""
+    # Пропускаємо дублікат якщо для цього rec_id вже є запис
+    if any(e.get("rec_id") == rec_id for e in learning_log):
+        return learning_log
     learning_log.append({
         "rec_id": rec_id,
         "cause_type": cause_type,
         "worked": worked,
         "date": today.isoformat(),
     })
-    return learning_log[-500:]  # зберігаємо останні 500 записів
+    return learning_log[-500:]
 
 
 def build_explain_why(

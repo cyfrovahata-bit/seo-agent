@@ -434,17 +434,25 @@ def main():
             rec["impact_checked"] = True
 
     # Оновлюємо learning_log на основі impact reviews
+    ACTION_TO_CAUSE = {
+        "edit_existing": "edit_caused_position_drop",
+        "create_new": "content_improvement_effect",
+    }
     for review in impact_reviews:
         m_before = review.get("metrics_before") or {}
         m_now = review.get("metrics_now") or {}
         clicks_before = m_before.get("clicks", 0) or 0
         clicks_now = m_now.get("clicks", 0) or 0
-        worked = clicks_now >= clicks_before * 1.1 if clicks_before > 0 else None
-        if worked is not None:
-            # Знаходимо тип причини зі zbігу рекомендацій
-            rec_match = next((r for r in backlog if r["id"] == review["id"]), {})
-            cause_type = rec_match.get("action", "edit_existing")
-            learning_log = record_outcome(review["id"], cause_type, worked, learning_log, today)
+        # Для нових сторінок (clicks_before==0): worked якщо є хоч 1 клік
+        if clicks_before > 0:
+            worked = clicks_now >= clicks_before * 1.1
+        elif clicks_now > 0:
+            worked = True
+        else:
+            worked = False
+        rec_match = next((r for r in backlog if r["id"] == review["id"]), {})
+        cause_type = ACTION_TO_CAUSE.get(rec_match.get("action", ""), "content_improvement_effect")
+        learning_log = record_outcome(review["id"], cause_type, worked, learning_log, today)
     save_json("learning_log.json", learning_log[-500:])
 
     next_id = (max((r["id"] for r in backlog), default=0)) + 1
