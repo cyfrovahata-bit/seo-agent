@@ -37,4 +37,5 @@ jobs:
           git config user.email "seo-agent@users.noreply.github.com"
           git add data/
           git diff --quiet --cached || git commit -m "chore: weekly snapshot [skip ci]"
-          git push
+          git pull --rebase origin HEAD || true
+          git push || git push --force-with-lease

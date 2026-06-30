@@ -633,8 +633,14 @@ def main():
         if rec is None:
             send_message(telegram_token, chat_id, f"⚠️ Рекомендацію #{rec_id} не знайдено.")
             continue
+        # Якщо це draft_ready (create_new чернетка) — спочатку публікуємо у WP
+        if rec.get("status") == "draft_ready" and rec.get("wp_post_id"):
+            _publish_draft(rec_id, by_id, telegram_token, chat_id)
+            continue
         rec["status"] = "published"
         rec["published_date"] = datetime.date.today().isoformat()
+        rec["impact_checked"] = False
+        rec["baseline_metrics"] = rec.get("baseline_metrics") or {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
         send_message(telegram_token, chat_id,
                      f"✅ #{rec_id} «{rec['title']}» зафіксовано як виконане вручну.\n"
                      f"Через ~14 днів у звіті побачимо чи це дало результат.")
