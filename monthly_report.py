@@ -24,6 +24,8 @@ from lib.technical_seo import run_technical_audit
 from lib.wordpress import WordPressClient
 from lib.state import load_json
 from lib.telegram import send_message
+from lib.explain_why import build_explain_why
+from lib.metrics import aggregate_site_totals
 
 MODEL = "claude-opus-4-7"
 
@@ -92,6 +94,22 @@ def main():
         and datetime.date.fromisoformat(r["published_date"]) >= today - datetime.timedelta(days=30)
     ]
 
+    keyword_history = load_json("keyword_history.json", default={})
+    current_totals = aggregate_site_totals(gsc_data, ga4_data)
+
+    explain_why_section = build_explain_why(
+        current_totals=current_totals,
+        current_gsc=gsc_data,
+        current_ga4=ga4_data,
+        history=full_history,
+        keyword_history=keyword_history,
+        backlog=backlog,
+        ga4_events=ga4_events,
+        technical_data=technical_audit,
+        mode="weekly",
+        today=today,
+    )
+
     user_message = f"""
 ПОВНА ІСТОРІЯ ТИЖНЕВИХ МЕТРИК ВІД СТАРТУ ПРОЄКТУ:
 {full_history}
@@ -104,6 +122,8 @@ def main():
 
 ПОДІЇ В GA4 ЗА ОСТАННІ 30 ДНІВ (проксі для лідів/конверсій):
 {ga4_events}
+
+{explain_why_section}
 
 ТЕХНІЧНИЙ SEO-АУДИТ:
 {technical_audit}

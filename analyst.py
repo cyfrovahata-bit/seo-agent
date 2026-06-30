@@ -14,8 +14,9 @@ import json
 
 import anthropic
 
-from lib.google_seo import get_search_console_data, get_ga4_data
+from lib.google_seo import get_search_console_data, get_ga4_data, get_ga4_events
 from lib.metrics import aggregate_site_totals, find_page_metrics, IMPACT_REVIEW_DAYS
+from lib.explain_why import build_explain_why
 from lib.state import load_json, save_json
 from lib.telegram import send_message, send_recommendations_buttons
 from lib.wordpress import WordPressClient
@@ -55,6 +56,13 @@ SYSTEM_PROMPT = """\
 - "СЕМАНТИЧНІ КЛАСТЕРИ" — вкажи який кластер найслабший і що можна зробити
 - "Реальний контент конкурентів" — порівняй їх H1/H2 з нашими сторінками, знайди ідеї яких нам бракує
 - Рекомендації завжди точкові: один заголовок, один блок, одна стаття — не "переписати сторінку"
+
+ПОЯСНЕННЯ ПРИЧИН (обов'язково):
+- Якщо є блок "🧠 АНАЛІЗ ПРИЧИН ЗМІН" — використовуй ці дані щоб пояснювати ЧОМУ щось змінилось
+- Після кожної суттєвої зміни (впало / зросло) додавай блок: "🧠 Чому: [причина з даних]"
+- НІКОЛИ не вигадуй причини — тільки ті, що підкріплені даними в секції "АНАЛІЗ ПРИЧИН ЗМІН"
+- Рівень впевненості ★★★★★ = дуже ймовірно, ★★☆☆☆ = можливо але не точно
+- Якщо причина невідома — так і пиши: "точна причина невідома, але..."
 
 СТИЛЬ — людська мова, не технічна:
 - Замість "CTR 2.3%" → "з кожних 100 людей які бачать сайт у пошуку, 2 заходять"
@@ -216,6 +224,13 @@ def main():
         os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
         start_date, end_date,
     )
+    try:
+        ga4_events = get_ga4_events(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],
+            start_date, end_date,
+        )
+    except Exception:
+        ga4_events = []
 
     history = load_json("metrics_history.json", default=[])
     backlog = load_json("recommendations.json", default=[])
@@ -367,6 +382,19 @@ def main():
             + "\nЗапропонуй 1-2 конкретні майданчики з інструкцією як розмістити посилання."
         )
 
+    explain_why_section = build_explain_why(
+        current_totals=current_totals,
+        current_gsc=gsc_data,
+        current_ga4=ga4_data,
+        history=history,
+        keyword_history=keyword_history,
+        backlog=backlog,
+        ga4_events=ga4_events,
+        technical_data=technical_data,
+        mode=mode,
+        today=today,
+    )
+
     user_message = (
         f"{report_type_hint}\n"
         f"Режим: {period_label} | Період: {start_date} – {end_date}\n\n"
@@ -374,6 +402,8 @@ def main():
         f"ДОВГОСТРОКОВИЙ ТРЕНД ({period_label}):\n{trend_table}\n\n"
         f"ДАНІ ПОШУКУ — Search Console (запит, сторінка, кліки, покази, CTR, позиція):\n{gsc_data}\n\n"
         f"ДАНІ ВІДВІДУВАНОСТІ — Google Analytics (сторінка, сесії, користувачі, відмови, тривалість):\n{ga4_data}\n\n"
+        f"ПОДІЇ GA4 (конверсії по сайту):\n{ga4_events}\n\n"
+        f"{explain_why_section}\n\n"
         f"{snapshots_text}\n\n"
         f"{frozen_text}\n\n"
         f"ВІДКРИТИЙ БЭКЛОГ (вже запропоновані, ще НЕ виконані рекомендації — не дублюй):\n"
