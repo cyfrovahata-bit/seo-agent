@@ -104,11 +104,14 @@
     "action": "create_new",
     "target_page_path": null,
     "id": 9,
-    "status": "draft_ready",
+    "status": "published",
     "created": "2026-07-01",
     "wp_post_id": 1854,
     "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1854&action=edit",
-    "draft_title": "Як замовити розробку сайту: покрокова інструкція для власників бізнесу"
+    "draft_title": "Як замовити розробку сайту: покрокова інструкція для власників бізнесу",
+    "published_date": "2026-07-01",
+    "impact_checked": false,
+    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
   },
   {
     "title": "Додати sitemap.xml і перевірити індексацію у Search Console",
