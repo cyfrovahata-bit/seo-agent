@@ -117,7 +117,8 @@
     "status": "published",
     "created": "2026-06-19",
     "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1824&action=edit",
-    "published_date": "2026-06-19"
+    "published_date": "2026-06-19",
+    "impact_checked": true
   },
   {
     "title": "Додати sitemap.xml і перевірити індексацію у Search Console",
@@ -133,6 +134,7 @@
     "baseline_metrics": {
       "indexed_pages_gsc": 2,
       "total_wp_pages": 9
-    }
+    },
+    "impact_checked": true
   }
 ]

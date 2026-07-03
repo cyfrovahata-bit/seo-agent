@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "rec_id": 1,
+    "cause_type": "content_improvement_effect",
+    "worked": false,
+    "date": "2026-07-03"
+  },
+  {
+    "rec_id": 3,
+    "cause_type": "edit_caused_position_drop",
+    "worked": false,
+    "date": "2026-07-03",
+    "funnel_before": {
+      "clicks": null,
+      "impressions": null,
+      "sessions": null,
+      "conversion_rate": null,
+      "ctr": null
+    }
+  }
+]
