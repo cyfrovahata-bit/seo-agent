@@ -486,5 +486,32 @@
         "avg_duration_sec": 23.8
       }
     ]
+  },
+  {
+    "date": "2026-07-05",
+    "mode": "daily",
+    "site_totals": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 4,
+      "users": 4
+    },
+    "top_queries": [],
+    "top_pages": [
+      {
+        "page": "/",
+        "sessions": 3,
+        "users": 3,
+        "bounce_rate": 0.0,
+        "avg_duration_sec": 214.3
+      },
+      {
+        "page": "/kontakty/",
+        "sessions": 1,
+        "users": 1,
+        "bounce_rate": 0.0,
+        "avg_duration_sec": 25.9
+      }
+    ]
   }
 ]
