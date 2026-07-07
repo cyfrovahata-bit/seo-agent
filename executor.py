@@ -642,8 +642,10 @@ def main():
         rec["impact_checked"] = False
         rec["baseline_metrics"] = rec.get("baseline_metrics") or {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
         send_message(telegram_token, chat_id,
-                     f"✅ #{rec_id} «{rec['title']}» зафіксовано як виконане вручну.\n"
-                     f"Через ~14 днів у звіті побачимо чи це дало результат.")
+                     f"✅ Зафіксовано!\n\n"
+                     f"#{rec_id} «{rec['title']}» позначено як виконане вручну.\n\n"
+                     f"📅 Дата: {rec['published_date']}\n"
+                     f"🔍 Через ~14 днів агент перевірить у GSC/GA4 чи це дало результат і покаже у звіті.")
 
     # Відкат автоматично опублікованих статей (/revert <id>)
     if requested_revert:
