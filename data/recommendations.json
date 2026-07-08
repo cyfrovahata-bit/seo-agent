@@ -11,7 +11,12 @@
     "created": "2026-06-19",
     "published_date": "2026-07-07",
     "impact_checked": false,
-    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0},
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    },
     "manual_instruction": "## Інструкція: Додати внутрішнє посилання на /seo-prosuvannya-saitiv/\n\n---\n\n**1. Знайди блок «4. Відсутність SEO оптимізації»**\n\nУ тексті є речення:\n> *«Навіть найкращий сайт не принесе клієнтів із Google, якщо його неможливо знайти в пошуку.»*\n\n---\n\n**2. Що додати після цього речення:**\n\nДодай нове речення:\n> *«Якщо хочете отримати результат — замовте [SEO просування сайтів](https://cyfrovahata.com.ua/seo-prosuvannya-saitiv/) під ваш бізнес.»*\n\n---\n\n**3. Де в редакторі WordPress:**\n\n- Відкрий сторінку → **Редагувати**\n- Знайди блок з текстом про SEO оптимізацію (блок №4)\n- Клікни в кінець речення після слів *«...знайти в пошуку»*\n- Додай нове речення, виділи слова **«SEO просування сайтів»** → натисни іконку **🔗 посилання** → встав URL: `https://cyfrovahata.com.ua/seo-prosuvannya-saitiv/`\n\n---\n\n**4. Перевір перед збереженням:**\n\n- Анкор: **SEO просування сайтів** ✅\n- Посилання відкривається в тій же вкладці (не `target=\"_blank\"`) ✅\n- Посилання активне (не 404) ✅\n\n---\n\n**5. Збережи → «Оновити»** сторінку."
   },
   {
@@ -26,7 +31,12 @@
     "created": "2026-06-22",
     "published_date": "2026-07-07",
     "impact_checked": false,
-    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Пришвидшити завантаження головної сторінки",
@@ -40,7 +50,12 @@
     "created": "2026-06-22",
     "published_date": "2026-07-07",
     "impact_checked": false,
-    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Вкоротити заголовок сторінки «Підтримка сайтів» у пошуку",
@@ -54,7 +69,12 @@
     "created": "2026-06-22",
     "published_date": "2026-07-07",
     "impact_checked": false,
-    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Написати статтю: як замовити розробку сайту — покрокова інструкція",
@@ -71,7 +91,12 @@
     "draft_title": "Як замовити розробку сайту: покрокова інструкція для власників бізнесу",
     "published_date": "2026-07-01",
     "impact_checked": false,
-    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Додати блог-статтю: що таке SEO просування сайту — гайд для власників бізнесу",
@@ -87,7 +112,12 @@
     "auto_published": true,
     "published_date": "2026-06-30",
     "impact_checked": false,
-    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Зареєструвати компанію в Google Business Profile",
@@ -101,7 +131,12 @@
     "created": "2026-06-22",
     "published_date": "2026-06-30",
     "impact_checked": false,
-    "baseline_metrics": {"clicks": 0, "impressions": 0, "sessions": 0, "users": 0}
+    "baseline_metrics": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    }
   },
   {
     "title": "Додати блог-статтю: скільки коштує SEO просування в Україні",
@@ -128,7 +163,10 @@
     "status": "published",
     "created": "2026-06-19",
     "published_date": "2026-06-19",
-    "baseline_metrics": {"indexed_pages_gsc": 2, "total_wp_pages": 9},
+    "baseline_metrics": {
+      "indexed_pages_gsc": 2,
+      "total_wp_pages": 9
+    },
     "impact_checked": true
   }
 ]
