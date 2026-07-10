@@ -580,5 +580,17 @@
         "avg_duration_sec": 31.3
       }
     ]
+  },
+  {
+    "date": "2026-07-10",
+    "mode": "daily",
+    "site_totals": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "users": 0
+    },
+    "top_queries": [],
+    "top_pages": []
   }
 ]
