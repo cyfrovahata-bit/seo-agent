@@ -22,6 +22,7 @@ from lib.state import load_json, save_json
 from lib.telegram import send_message, send_recommendations_buttons
 from lib.wordpress import WordPressClient
 from lib.competitors import analyze_competitors
+from lib.serp_gap import build_serp_gap_plan
 from lib.technical_seo import run_technical_audit
 from lib.backlinks import get_backlink_report
 from lib.target_keywords import build_target_keyword_report, build_cluster_summary, build_auto_cluster_report
@@ -559,6 +560,17 @@ def main():
         send_recommendations_buttons(
             os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"], pending
         )
+
+    # План пробиття в топ-10: конкретні правки «що → на що» для запитів на позиціях 11–50
+    if mode == "weekly":
+        try:
+            serp_plan = build_serp_gap_plan(gsc_data, client, MODEL)
+            if serp_plan:
+                send_message(
+                    os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"], serp_plan
+                )
+        except Exception as e:
+            print(f"serp_gap error: {e}")
 
 
 if __name__ == "__main__":
