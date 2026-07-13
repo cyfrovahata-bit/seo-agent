@@ -227,9 +227,13 @@ def main():
     start_date = (today - datetime.timedelta(days=days)).isoformat()
     end_date = today.isoformat()
 
+    # GSC віддає дані з затримкою ~2 доби — без зсуву daily-звіти завжди порожні
+    gsc_end = today - datetime.timedelta(days=2)
+    gsc_start = gsc_end - datetime.timedelta(days=days)
+
     gsc_data = get_search_console_data(
         os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GSC_SITE_URL"],
-        start_date, end_date, row_limit=200,
+        gsc_start.isoformat(), gsc_end.isoformat(), row_limit=200,
     )
     ga4_data = get_ga4_data(
         os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ["GA4_PROPERTY_ID"],

@@ -50,16 +50,25 @@ def main():
     gsc_site = os.environ.get("GSC_SITE_URL", "")
     today = datetime.date.today()
 
-    # Завантажуємо дані GSC за сьогодні (останній день)
+    # GSC віддає дані з затримкою ~2 доби, тому беремо останній доступний день
+    day = (today - datetime.timedelta(days=2)).isoformat()
     try:
-        gsc_data = get_search_console_data(days=1)
+        gsc_data = get_search_console_data(
+            os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], gsc_site,
+            day, day, row_limit=500,
+        )
     except Exception as e:
         print(f"GSC error: {e}")
         return
 
     totals = _get_today_totals(gsc_data)
-    history = load_json("history.json", default=[])
-    last_alerts = load_json("data/anomaly_last_alert.json", default={})
+    # Середнє рахуємо з daily-зрізів metrics_history (site_totals усередині)
+    history = [
+        {"date": h.get("date"), **h.get("site_totals", {})}
+        for h in load_json("metrics_history.json", default=[])
+        if h.get("mode") == "daily"
+    ]
+    last_alerts = load_json("anomaly_last_alert.json", default={})
 
     avg = _daily_avg(history, LOOKBACK_DAYS)
 
@@ -83,7 +92,7 @@ def main():
             today.isoformat(), "\n".join(alerts)
         )
         send_message(telegram_token, chat_id, msg)
-        save_json("data/anomaly_last_alert.json", last_alerts)
+        save_json("anomaly_last_alert.json", last_alerts)
     else:
         print(f"No anomaly detected. clicks={totals['clicks']}, impressions={totals['impressions']}")
 
