@@ -580,10 +580,14 @@ def main():
         m_pub = re.match(r"/published\s+(\d+)", text)
         m_rej = re.match(r"/reject\s+(\d+)", text)
         m_rev = re.match(r"/revert\s+(\d+)", text)
+        # /done_8 (клікабельний варіант з impact review) і /done 8
+        m_done_txt = re.match(r"/done[_\s]+(\d+)", text)
         if text.strip() == "/status":
             _send_status(telegram_token, chat_id, backlog, load_json("learning_log.json", default=[]))
         elif m_do:
             requested_do.append(int(m_do.group(1)))
+        elif m_done_txt:
+            requested_done.append(int(m_done_txt.group(1)))
         elif m_pub:
             requested_published.append(int(m_pub.group(1)))
         elif m_rej:
@@ -636,6 +640,22 @@ def main():
         # Якщо це draft_ready (create_new чернетка) — спочатку публікуємо у WP
         if rec.get("status") == "draft_ready" and rec.get("wp_post_id"):
             _publish_draft(rec_id, by_id, telegram_token, chat_id)
+            continue
+        # Вже опубліковане + /done — це відповідь на impact review: «результат задовільний»
+        if rec.get("status") == "published":
+            rec["impact_checked"] = True
+            learning_log = load_json("learning_log.json", default=[])
+            learning_log.append({
+                "rec_id": rec_id,
+                "cause_type": "content_improvement_effect" if rec.get("action") == "create_new" else "edit_caused_position_drop",
+                "worked": True,
+                "date": datetime.date.today().isoformat(),
+                "note": "власник підтвердив задовільний результат (impact review)",
+            })
+            save_json("learning_log.json", learning_log)
+            send_message(telegram_token, chat_id,
+                         f"👍 Зрозумів — #{rec_id} «{rec['title']}» спрацювало.\n"
+                         f"Запам'ятав це: подібні рекомендації тепер матимуть вищий пріоритет.")
             continue
         rec["status"] = "published"
         rec["published_date"] = datetime.date.today().isoformat()
