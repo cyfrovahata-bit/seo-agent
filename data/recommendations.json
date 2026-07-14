@@ -166,7 +166,7 @@
     "edit_link": "https://cyfrovahata.com.ua/wp-admin/post.php?post=1847&action=edit",
     "auto_published": true,
     "published_date": "2026-06-30",
-    "impact_checked": false,
+    "impact_checked": true,
     "baseline_metrics": {
       "clicks": 0,
       "impressions": 0,
@@ -185,7 +185,7 @@
     "status": "published",
     "created": "2026-06-22",
     "published_date": "2026-06-30",
-    "impact_checked": false,
+    "impact_checked": true,
     "baseline_metrics": {
       "clicks": 0,
       "impressions": 0,
