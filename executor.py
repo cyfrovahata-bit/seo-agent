@@ -708,7 +708,8 @@ def main():
         save_json("recommendations.json", list(by_id.values()))
 
     # Автоматичний impact review: шукаємо published без перевірки ефекту (14+ днів)
-    _auto_impact_review(backlog, telegram_token, chat_id)
+    if _auto_impact_review(backlog, telegram_token, chat_id):
+        save_json("recommendations.json", list(by_id.values()))
 
 
 def _auto_impact_review(backlog: list[dict], telegram_token: str, chat_id: str) -> None:
@@ -728,11 +729,20 @@ def _auto_impact_review(backlog: list[dict], telegram_token: str, chat_id: str) 
             days_passed = (today - datetime.date.fromisoformat(pub_date)).days
         except Exception:
             continue
-        if days_passed >= IMPACT_REVIEW_DAYS:
-            due.append((rec, days_passed))
+        if days_passed < IMPACT_REVIEW_DAYS:
+            continue
+        # Не спамимо: нагадуємо не частіше ніж раз на 7 днів
+        last_sent = rec.get("impact_review_sent")
+        if last_sent:
+            try:
+                if (today - datetime.date.fromisoformat(last_sent)).days < 7:
+                    continue
+            except Exception:
+                pass
+        due.append((rec, days_passed))
 
     if not due:
-        return
+        return False
 
     # Отримуємо GSC/GA4 для порівняння
     try:
@@ -748,7 +758,7 @@ def _auto_impact_review(backlog: list[dict], telegram_token: str, chat_id: str) 
         )
     except Exception as e:
         print(f"Impact review fetch error: {e}")
-        return
+        return False
 
     for rec, days_passed in due[:3]:  # не більше 3 за раз
         baseline = rec.get("baseline_metrics") or {}
@@ -770,6 +780,8 @@ def _auto_impact_review(backlog: list[dict], telegram_token: str, chat_id: str) 
 
         lines.append(f"\nЯкщо результат задовільний — натисни /done_{rec['id']}")
         send_message(telegram_token, chat_id, "\n".join(lines))
+        rec["impact_review_sent"] = today.isoformat()
+    return True
 
 
 if __name__ == "__main__":
