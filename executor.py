@@ -644,6 +644,13 @@ def main():
         # Вже опубліковане + /done — це відповідь на impact review: «результат задовільний»
         if rec.get("status") == "published":
             rec["impact_checked"] = True
+            # Якщо даних для порівняння не було — закриваємо без висновків,
+            # щоб не записувати в журнал навчання непідтверджений успіх
+            if rec.get("impact_no_data"):
+                send_message(telegram_token, chat_id,
+                             f"👌 Закрив перевірку #{rec_id} «{rec['title']}» без висновків — "
+                             f"даних для порівняння не було. Нагадувань більше не буде.")
+                continue
             learning_log = load_json("learning_log.json", default=[])
             learning_log.append({
                 "rec_id": rec_id,
@@ -766,19 +773,27 @@ def _auto_impact_review(backlog: list[dict], telegram_token: str, chat_id: str) 
         current = find_page_metrics(page, gsc_now, ga4_now) if page else {}
 
         lines = [f"📊 Impact review #{rec['id']} «{rec['title']}» ({days_passed} днів):"]
+        has_data = False
         if baseline and current:
             for key, label in [("clicks", "кліки"), ("impressions", "покази"), ("sessions", "сесії")]:
                 b = baseline.get(key, 0) or 0
                 c = current.get(key, 0) or 0
                 if b == 0 and c == 0:
                     continue
+                has_data = True
                 diff = c - b
                 pct = f" ({diff:+d}, {diff/b*100:+.0f}%)" if b > 0 else f" (було 0 → {c})"
                 lines.append(f"  {label}: {b} → {c}{pct}")
+        if has_data:
+            rec["impact_no_data"] = False
+            lines.append(f"\nЯкщо результат задовільний — натисни /done_{rec['id']}")
         else:
-            lines.append("  (немає даних для порівняння)")
-
-        lines.append(f"\nЯкщо результат задовільний — натисни /done_{rec['id']}")
+            rec["impact_no_data"] = True
+            lines.append(
+                "  Даних для порівняння ще немає — ефект неможливо виміряти.\n"
+                f"\nЯ перевірю знову за тиждень. Якщо хочеш закрити перевірку зараз "
+                f"(без висновків) — натисни /done_{rec['id']}"
+            )
         send_message(telegram_token, chat_id, "\n".join(lines))
         rec["impact_review_sent"] = today.isoformat()
     return True
