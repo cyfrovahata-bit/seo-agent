@@ -43,5 +43,18 @@
       "conversion_rate": null,
       "ctr": null
     }
+  },
+  {
+    "rec_id": 9,
+    "cause_type": "content_improvement_effect",
+    "worked": false,
+    "date": "2026-07-15",
+    "funnel_before": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "conversion_rate": null,
+      "ctr": null
+    }
   }
 ]
