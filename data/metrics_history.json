@@ -1753,5 +1753,153 @@
       }
     ],
     "top_pages": []
+  },
+  {
+    "date": "2026-07-19",
+    "mode": "weekly",
+    "site_totals": {
+      "clicks": 0,
+      "impressions": 1973,
+      "sessions": 10,
+      "users": 9
+    },
+    "top_queries": [
+      {
+        "query": "seo бюджет",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 88
+      },
+      {
+        "query": "seo на етапі створення сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 4,
+        "ctr": 0,
+        "position": 81
+      },
+      {
+        "query": "seo на етапі створення сайту включає",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 3,
+        "ctr": 0,
+        "position": 83.3
+      },
+      {
+        "query": "seo оптимізація ціна",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 3,
+        "ctr": 0,
+        "position": 46
+      },
+      {
+        "query": "seo прайс",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 20
+      },
+      {
+        "query": "seo просування",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 184,
+        "ctr": 0,
+        "position": 41.0
+      },
+      {
+        "query": "seo просування англійською",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 53
+      },
+      {
+        "query": "seo просування будівельного сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 100
+      },
+      {
+        "query": "seo просування молодого сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 61
+      },
+      {
+        "query": "seo просування на етапі розробки сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 81
+      },
+      {
+        "query": "seo просування сайта",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 39.5
+      },
+      {
+        "query": "seo просування сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 115,
+        "ctr": 0,
+        "position": 39.8
+      },
+      {
+        "query": "seo просування сайту в україні",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 39
+      },
+      {
+        "query": "seo просування сайту в інтернеті",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 13,
+        "ctr": 0,
+        "position": 59.6
+      },
+      {
+        "query": "seo просування сайту вартість",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 10,
+        "ctr": 0,
+        "position": 38
+      }
+    ],
+    "top_pages": [
+      {
+        "page": "/",
+        "sessions": 8,
+        "users": 7,
+        "bounce_rate": 87.5,
+        "avg_duration_sec": 26.7
+      },
+      {
+        "page": "/kontakty/",
+        "sessions": 2,
+        "users": 2,
+        "bounce_rate": 0.0,
+        "avg_duration_sec": 53.6
+      }
+    ]
   }
 ]

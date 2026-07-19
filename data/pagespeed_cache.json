@@ -1,26 +1,26 @@
 {
   "https://cyfrovahata.com.ua": {
-    "cached_date": "2026-07-12",
+    "cached_date": "2026-07-19",
     "data": {
-      "url": "https://cyfrovahata.com.ua/",
-      "performance_score": 63,
+      "url": "https://cyfrovahata.com.ua",
+      "performance_score": 66,
       "seo_score": 100,
       "accessibility_score": 97,
-      "largest_contentful_paint": "5.4 s",
-      "cumulative_layout_shift": "0.013",
-      "total_blocking_time": "280 ms"
+      "largest_contentful_paint": "6.5 s",
+      "cumulative_layout_shift": "0.016",
+      "total_blocking_time": "120 ms"
     }
   },
   "https://cyfrovahata.com.ua/kontakty": {
-    "cached_date": "2026-07-12",
+    "cached_date": "2026-07-19",
     "data": {
       "url": "https://cyfrovahata.com.ua/kontakty/",
-      "performance_score": 70,
+      "performance_score": 74,
       "seo_score": 100,
       "accessibility_score": 97,
-      "largest_contentful_paint": "5.9 s",
+      "largest_contentful_paint": "4.6 s",
       "cumulative_layout_shift": "0",
-      "total_blocking_time": "10 ms"
+      "total_blocking_time": "0 ms"
     }
   }
 }
