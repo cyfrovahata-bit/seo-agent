@@ -56,5 +56,12 @@
       "conversion_rate": null,
       "ctr": null
     }
+  },
+  {
+    "rec_id": 6,
+    "cause_type": "edit_caused_position_drop",
+    "worked": true,
+    "date": "2026-07-21",
+    "note": "власник підтвердив задовільний результат (impact review)"
   }
 ]

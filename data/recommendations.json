@@ -141,7 +141,7 @@
     "status": "published",
     "created": "2026-06-22",
     "published_date": "2026-07-07",
-    "impact_checked": false,
+    "impact_checked": true,
     "baseline_metrics": {
       "clicks": 0,
       "impressions": 0,
@@ -168,7 +168,9 @@
       "impressions": 0,
       "sessions": 0,
       "users": 0
-    }
+    },
+    "impact_no_data": true,
+    "impact_review_sent": "2026-07-21"
   },
   {
     "title": "Написати статтю: як замовити розробку сайту — покрокова інструкція",
