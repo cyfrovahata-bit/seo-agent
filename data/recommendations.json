@@ -98,7 +98,7 @@
     "status": "published",
     "created": "2026-06-19",
     "published_date": "2026-07-07",
-    "impact_checked": false,
+    "impact_checked": true,
     "baseline_metrics": {
       "clicks": 0,
       "impressions": 0,
@@ -120,7 +120,7 @@
     "status": "published",
     "created": "2026-06-22",
     "published_date": "2026-07-07",
-    "impact_checked": false,
+    "impact_checked": true,
     "baseline_metrics": {
       "clicks": 0,
       "impressions": 0,
@@ -162,7 +162,7 @@
     "status": "published",
     "created": "2026-06-22",
     "published_date": "2026-07-07",
-    "impact_checked": false,
+    "impact_checked": true,
     "baseline_metrics": {
       "clicks": 0,
       "impressions": 0,

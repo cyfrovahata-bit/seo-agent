@@ -2042,5 +2042,138 @@
         "avg_duration_sec": 19.2
       }
     ]
+  },
+  {
+    "date": "2026-07-21",
+    "mode": "daily",
+    "site_totals": {
+      "clicks": 0,
+      "impressions": 507,
+      "sessions": 0,
+      "users": 0
+    },
+    "top_queries": [
+      {
+        "query": "seo на етапі створення сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 79
+      },
+      {
+        "query": "seo просування",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 48,
+        "ctr": 0,
+        "position": 42.8
+      },
+      {
+        "query": "seo просування приватна особа",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 72
+      },
+      {
+        "query": "seo просування сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 49,
+        "ctr": 0,
+        "position": 38.7
+      },
+      {
+        "query": "seo просування сайту в інтернеті",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 46.5
+      },
+      {
+        "query": "seo просування сайту по україні",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 36
+      },
+      {
+        "query": "seo просування сайту це",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 3,
+        "ctr": 0,
+        "position": 31
+      },
+      {
+        "query": "seo просування сайту ціна",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 5,
+        "ctr": 0,
+        "position": 31.2
+      },
+      {
+        "query": "seo просування сайтів",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 22,
+        "ctr": 0,
+        "position": 53.5
+      },
+      {
+        "query": "seo просування це",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 4,
+        "ctr": 0,
+        "position": 28
+      },
+      {
+        "query": "seo просування ціна",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 35
+      },
+      {
+        "query": "seo створення сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 92
+      },
+      {
+        "query": "seo створення сайтів",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 59.5
+      },
+      {
+        "query": "seo ужгород",
+        "page": "https://cyfrovahata.com.ua/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 1
+      },
+      {
+        "query": "seo цены",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 56
+      }
+    ],
+    "top_pages": []
   }
 ]

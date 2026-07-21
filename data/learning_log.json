@@ -63,5 +63,60 @@
     "worked": true,
     "date": "2026-07-21",
     "note": "власник підтвердив задовільний результат (impact review)"
+  },
+  {
+    "rec_id": 2,
+    "cause_type": "edit_caused_position_drop",
+    "worked": false,
+    "date": "2026-07-21",
+    "page": "/chomu-sait-ne-prynosyt-kliientiv/",
+    "funnel_before": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "conversion_rate": null,
+      "ctr": null
+    },
+    "funnel_after": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "conversion_rate": 0.0,
+      "ctr": 0.0
+    }
+  },
+  {
+    "rec_id": 5,
+    "cause_type": "content_improvement_effect",
+    "worked": false,
+    "date": "2026-07-21",
+    "funnel_before": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "conversion_rate": null,
+      "ctr": null
+    }
+  },
+  {
+    "rec_id": 7,
+    "cause_type": "edit_caused_position_drop",
+    "worked": false,
+    "date": "2026-07-21",
+    "page": "/pidtrymka-saitiv/",
+    "funnel_before": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "conversion_rate": null,
+      "ctr": null
+    },
+    "funnel_after": {
+      "clicks": 0,
+      "impressions": 0,
+      "sessions": 0,
+      "conversion_rate": 0.0,
+      "ctr": 0.0
+    }
   }
 ]
