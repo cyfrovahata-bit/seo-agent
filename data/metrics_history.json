@@ -2323,5 +2323,153 @@
         "avg_duration_sec": 0.0
       }
     ]
+  },
+  {
+    "date": "2026-07-23",
+    "mode": "daily",
+    "site_totals": {
+      "clicks": 0,
+      "impressions": 607,
+      "sessions": 12,
+      "users": 8
+    },
+    "top_queries": [
+      {
+        "query": "seo на етапі створення сайту включає",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 81
+      },
+      {
+        "query": "seo просування",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 54,
+        "ctr": 0,
+        "position": 40.4
+      },
+      {
+        "query": "seo просування молодого сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 60
+      },
+      {
+        "query": "seo просування сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 59,
+        "ctr": 0,
+        "position": 41.3
+      },
+      {
+        "query": "seo просування сайту в інтернеті",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 5,
+        "ctr": 0,
+        "position": 59.6
+      },
+      {
+        "query": "seo просування сайту вартість",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 37
+      },
+      {
+        "query": "seo просування сайту це",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 5,
+        "ctr": 0,
+        "position": 29.6
+      },
+      {
+        "query": "seo просування сайту ціна",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 9,
+        "ctr": 0,
+        "position": 34.8
+      },
+      {
+        "query": "seo просування сайтів",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 22,
+        "ctr": 0,
+        "position": 56.5
+      },
+      {
+        "query": "seo просування це",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 5,
+        "ctr": 0,
+        "position": 25.2
+      },
+      {
+        "query": "seo просування ціна",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 3,
+        "ctr": 0,
+        "position": 32.3
+      },
+      {
+        "query": "seo створення сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 1,
+        "ctr": 0,
+        "position": 98
+      },
+      {
+        "query": "seo цены",
+        "page": "https://cyfrovahata.com.ua/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "clicks": 0,
+        "impressions": 3,
+        "ctr": 0,
+        "position": 58
+      },
+      {
+        "query": "seo-просування",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 23.5
+      },
+      {
+        "query": "seo-просування сайту",
+        "page": "https://cyfrovahata.com.ua/shcho-take-seo-prosuvannia-saitu/",
+        "clicks": 0,
+        "impressions": 2,
+        "ctr": 0,
+        "position": 37.5
+      }
+    ],
+    "top_pages": [
+      {
+        "page": "/",
+        "sessions": 11,
+        "users": 7,
+        "bounce_rate": 90.9,
+        "avg_duration_sec": 3.2
+      },
+      {
+        "page": "/skilky-koshtuie-seo-prosuvannia-v-ukraini/",
+        "sessions": 1,
+        "users": 1,
+        "bounce_rate": 0.0,
+        "avg_duration_sec": 19.0
+      }
+    ]
   }
 ]
